@@ -1,0 +1,3124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>cyteckvizio // Real-Time 3D Cyber Threat Globe</title>
+  <meta name="description" content="cyteckvizio — Real-time interactive 3D global cyber attack visualization globe styled like Kaspersky Cybermap. Features live threat feeds, 3D sub-orbital bezier arcs, Great Circle trajectory mapping, and pluggable threat adapters.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Share+Tech+Mono&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+  <style>
+    /* ==========================================================================
+       THEME VARIABLES & CSS RESET
+       ========================================================================== */
+    :root {
+      /* Dark Theme (Default) */
+      --bg-color: #060813;
+      --bg-radial: radial-gradient(circle at 50% 50%, #0d1429 0%, #060813 100%);
+      --panel-bg: rgba(9, 14, 28, 0.78);
+      --panel-border: rgba(0, 240, 255, 0.18);
+      --panel-border-glow: rgba(0, 240, 255, 0.45);
+      --hud-accent: #00f0ff;
+      --hud-glow: rgba(0, 240, 255, 0.35);
+      --text-primary: #e6f1ff;
+      --text-secondary: #7e95b7;
+      --text-muted: #4a5e7b;
+      --card-bg: rgba(13, 22, 44, 0.65);
+      --card-hover: rgba(18, 30, 60, 0.85);
+      --grid-line: rgba(0, 240, 255, 0.05);
+      --dot-color: rgba(70, 130, 220, 0.35);
+      --dot-active: rgba(0, 240, 255, 0.95);
+      --shadow-hud: 0 8px 32px 0 rgba(0, 0, 0, 0.65);
+      
+      /* Threat Vector Colors */
+      --color-ddos: #ff2a6d;
+      --color-malware: #00f59b;
+      --color-phishing: #05d9e8;
+      --color-bruteforce: #bf55ec;
+      --color-exploit: #ffb800;
+      --color-ransomware: #ff003c;
+    }
+
+    [data-theme="light"] {
+      --bg-color: #ebf0f7;
+      --bg-radial: radial-gradient(circle at 50% 50%, #f4f7fc 0%, #e2e8f0 100%);
+      --panel-bg: rgba(255, 255, 255, 0.88);
+      --panel-border: rgba(15, 35, 75, 0.18);
+      --panel-border-glow: rgba(0, 110, 220, 0.4);
+      --hud-accent: #0066cc;
+      --hud-glow: rgba(0, 102, 204, 0.25);
+      --text-primary: #0a192f;
+      --text-secondary: #486581;
+      --text-muted: #829ab1;
+      --card-bg: rgba(240, 244, 250, 0.85);
+      --card-hover: rgba(230, 238, 248, 0.95);
+      --grid-line: rgba(0, 102, 204, 0.05);
+      --dot-color: rgba(40, 80, 140, 0.28);
+      --dot-active: rgba(0, 102, 204, 0.95);
+      --shadow-hud: 0 8px 30px 0 rgba(10, 25, 50, 0.12);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: var(--bg-color);
+      background-image: var(--bg-radial);
+      color: var(--text-primary);
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      font-size: 13px;
+      line-height: 1.4;
+      transition: background 0.3s ease, color 0.3s ease;
+    }
+
+    /* ==========================================================================
+       CANVAS & BACKGROUND GRID
+       ========================================================================== */
+    #mapCanvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 1;
+      display: block;
+    }
+
+    .radar-vignette {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: 2;
+      background: radial-gradient(circle at 50% 50%, transparent 60%, rgba(3, 6, 15, 0.65) 100%);
+      box-shadow: inset 0 0 100px rgba(0, 0, 0, 0.7);
+    }
+
+    .cyber-crosshairs {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: 2;
+      background-image: 
+        linear-gradient(var(--grid-line) 1px, transparent 1px),
+        linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
+      background-size: 80px 80px;
+    }
+
+    /* ==========================================================================
+       HUD OVERLAY CONTAINER
+       ========================================================================== */
+    .hud-container {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 10;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      pointer-events: none;
+      padding: 16px;
+      overflow: hidden;
+    }
+
+    .interactive {
+      pointer-events: auto;
+    }
+
+    /* Common HUD Card Style */
+    .hud-card {
+      background: var(--panel-bg);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid var(--panel-border);
+      border-radius: 6px;
+      box-shadow: var(--shadow-hud);
+      position: relative;
+      overflow: hidden;
+      transition: border-color 0.25s ease, box-shadow 0.25s ease, transform 0.2s ease;
+      clip-path: polygon(
+        0 0,
+        calc(100% - 10px) 0,
+        100% 10px,
+        100% 100%,
+        10px 100%,
+        0 calc(100% - 10px)
+      );
+    }
+
+    .hud-card:hover {
+      border-color: var(--panel-border-glow);
+      box-shadow: 0 10px 36px 0 rgba(0, 240, 255, 0.12);
+    }
+
+    /* High-tech corner bracket accents */
+    .hud-card::before, .hud-card::after {
+      content: '';
+      position: absolute;
+      width: 9px;
+      height: 9px;
+      pointer-events: none;
+      z-index: 5;
+    }
+    .hud-card::before {
+      top: 0;
+      left: 0;
+      border-top: 2px solid var(--hud-accent);
+      border-left: 2px solid var(--hud-accent);
+    }
+    .hud-card::after {
+      bottom: 0;
+      right: 0;
+      border-bottom: 2px solid var(--hud-accent);
+      border-right: 2px solid var(--hud-accent);
+    }
+
+    .hud-title {
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: var(--hud-accent);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 10px;
+      text-shadow: 0 0 10px var(--hud-glow);
+    }
+
+    .hud-title svg {
+      width: 14px;
+      height: 14px;
+      fill: currentColor;
+    }
+
+    /* ==========================================================================
+       TOP HEADER BAR
+       ========================================================================== */
+    .hud-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 10px 18px;
+      width: 100%;
+    }
+
+    .brand-section {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .radar-icon-pulse {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      border: 2px solid var(--hud-accent);
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 0 14px var(--hud-glow);
+    }
+
+    .radar-icon-pulse::after {
+      content: '';
+      position: absolute;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--hud-accent);
+      box-shadow: 0 0 8px var(--hud-accent);
+      animation: pulseCore 2s infinite ease-in-out;
+    }
+
+    @keyframes pulseCore {
+      0% { transform: scale(0.8); opacity: 0.8; }
+      50% { transform: scale(1.3); opacity: 1; }
+      100% { transform: scale(0.8); opacity: 0.8; }
+    }
+
+    .brand-title {
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 20px;
+      font-weight: 700;
+      letter-spacing: 2px;
+      line-height: 1;
+      color: var(--text-primary);
+      text-transform: uppercase;
+      text-shadow: 0 0 12px rgba(0, 240, 255, 0.4);
+    }
+
+    .brand-subtitle {
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 10px;
+      letter-spacing: 1px;
+      color: var(--text-secondary);
+      margin-top: 3px;
+    }
+
+    .header-center-info {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    /* DEFCON Threat Condition Widget */
+    .defcon-badge {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 5px 12px;
+      border-radius: 4px;
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 11px;
+      letter-spacing: 1px;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      background: rgba(0, 0, 0, 0.35);
+      transition: all 0.3s ease;
+    }
+
+    .defcon-bars {
+      display: flex;
+      gap: 3px;
+      align-items: center;
+    }
+
+    .defcon-bars .d-bar {
+      width: 4px;
+      height: 12px;
+      border-radius: 1px;
+      background: rgba(255, 255, 255, 0.2);
+      transition: background 0.3s, box-shadow 0.3s;
+    }
+
+    .defcon-4 { border-color: rgba(0, 245, 155, 0.4); color: #00f59b; }
+    .defcon-4 .d-bar:nth-child(1) { background: #00f59b; box-shadow: 0 0 6px #00f59b; }
+
+    .defcon-3 { border-color: rgba(0, 240, 255, 0.5); color: #00f0ff; }
+    .defcon-3 .d-bar:nth-child(-n+2) { background: #00f0ff; box-shadow: 0 0 6px #00f0ff; }
+
+    .defcon-2 { border-color: rgba(255, 184, 0, 0.6); color: #ffb800; }
+    .defcon-2 .d-bar:nth-child(-n+3) { background: #ffb800; box-shadow: 0 0 6px #ffb800; }
+
+    .defcon-1 {
+      border-color: rgba(255, 0, 60, 0.8);
+      color: #ff003c;
+      animation: alertPulse 1.2s infinite ease-in-out;
+    }
+    .defcon-1 .d-bar { background: #ff003c; box-shadow: 0 0 8px #ff003c; }
+
+    @keyframes alertPulse {
+      0%, 100% { box-shadow: 0 0 15px rgba(255, 0, 60, 0.3); }
+      50% { box-shadow: 0 0 25px rgba(255, 0, 60, 0.8); }
+    }
+
+    .status-badge {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 5px 12px;
+      border-radius: 20px;
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 11px;
+      letter-spacing: 1px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      background: rgba(0, 0, 0, 0.3);
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #888;
+      box-shadow: 0 0 6px currentColor;
+    }
+
+    .status-badge.live .status-dot {
+      background: #00f59b;
+      box-shadow: 0 0 10px #00f59b;
+      animation: blinkDot 1.4s infinite;
+    }
+
+    .status-badge.simulated .status-dot {
+      background: #ffb800;
+      box-shadow: 0 0 10px #ffb800;
+      animation: blinkDot 2s infinite;
+    }
+
+    .status-badge.disconnected .status-dot {
+      background: #ff2a6d;
+      box-shadow: 0 0 10px #ff2a6d;
+    }
+
+    @keyframes blinkDot {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+
+    .clock-display {
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 13px;
+      color: var(--hud-accent);
+      letter-spacing: 1.5px;
+    }
+
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .btn-hud {
+      background: var(--card-bg);
+      border: 1px solid var(--panel-border);
+      color: var(--text-primary);
+      padding: 6px 12px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: 1px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.2s ease;
+    }
+
+    .btn-hud:hover {
+      background: var(--card-hover);
+      border-color: var(--hud-accent);
+      color: var(--hud-accent);
+      box-shadow: 0 0 10px var(--hud-glow);
+    }
+
+    .btn-hud svg {
+      width: 14px;
+      height: 14px;
+      fill: currentColor;
+    }
+
+    /* Audio Equalizer dancing bars */
+    .audio-eq-bars {
+      display: inline-flex;
+      align-items: flex-end;
+      gap: 2px;
+      height: 12px;
+      margin-left: 2px;
+    }
+
+    .audio-eq-bars span {
+      width: 2px;
+      height: 3px;
+      background: var(--text-secondary);
+      border-radius: 1px;
+      transition: height 0.15s ease, background 0.2s;
+    }
+
+    .audio-eq-bars.active span {
+      background: var(--hud-accent);
+    }
+
+    .audio-eq-bars.active span:nth-child(1) { animation: eqDance 0.45s infinite alternate ease-in-out; }
+    .audio-eq-bars.active span:nth-child(2) { animation: eqDance 0.35s infinite alternate ease-in-out 0.15s; }
+    .audio-eq-bars.active span:nth-child(3) { animation: eqDance 0.55s infinite alternate ease-in-out 0.08s; }
+
+    @keyframes eqDance {
+      0% { height: 3px; }
+      100% { height: 12px; }
+    }
+
+    /* Live Sparkline spectrum chart */
+    .sparkline-box {
+      grid-column: span 2;
+      background: var(--card-bg);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: 6px;
+      padding: 8px 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+
+    .sparkline-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 9px;
+      color: var(--text-secondary);
+      letter-spacing: 1px;
+    }
+
+    #apsSparkline {
+      width: 100%;
+      height: 38px;
+      display: block;
+    }
+
+    /* Tactical Map Cursor Floating HUD */
+    .tactical-cursor {
+      position: absolute;
+      bottom: 82px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 15;
+      pointer-events: none;
+      background: var(--panel-bg);
+      border: 1px solid var(--panel-border);
+      padding: 5px 16px;
+      border-radius: 20px;
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 10px;
+      color: var(--text-secondary);
+      display: flex;
+      gap: 14px;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+      letter-spacing: 1px;
+      backdrop-filter: blur(8px);
+      white-space: nowrap;
+    }
+    .tactical-cursor span:first-child {
+      color: var(--hud-accent);
+    }
+
+
+    /* ==========================================================================
+       MIDDLE MAIN CONTENT (LEFT & RIGHT HUD PANELS)
+       ========================================================================== */
+    .hud-middle {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      width: 100%;
+      height: calc(100% - 130px);
+      pointer-events: none;
+      margin: 8px 0;
+    }
+
+    .hud-left-column, .hud-right-column {
+      width: 320px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      max-height: 100%;
+      overflow-y: auto;
+      scrollbar-width: thin;
+      scrollbar-color: var(--panel-border) transparent;
+      padding-right: 4px;
+    }
+
+    .hud-left-column::-webkit-scrollbar,
+    .hud-right-column::-webkit-scrollbar {
+      width: 4px;
+    }
+    .hud-left-column::-webkit-scrollbar-thumb,
+    .hud-right-column::-webkit-scrollbar-thumb {
+      background: var(--panel-border);
+      border-radius: 4px;
+    }
+
+    /* Counters Panel */
+    .counters-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      padding: 14px;
+    }
+
+    .counter-block {
+      background: var(--card-bg);
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      border-radius: 6px;
+      padding: 10px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .counter-block.full-width {
+      grid-column: span 2;
+    }
+
+    .counter-label {
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 10px;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      color: var(--text-secondary);
+    }
+
+    .counter-value {
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 22px;
+      font-weight: 700;
+      color: var(--text-primary);
+      letter-spacing: 1px;
+    }
+
+    .counter-value.accent {
+      color: var(--hud-accent);
+      text-shadow: 0 0 12px var(--hud-glow);
+    }
+
+    /* Attack Types Panel */
+    .types-panel {
+      padding: 14px;
+    }
+
+    .type-row {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      margin-bottom: 8px;
+      cursor: pointer;
+      padding: 4px 6px;
+      border-radius: 4px;
+      transition: background 0.2s ease, opacity 0.2s ease;
+    }
+
+    .type-row:hover {
+      background: var(--card-hover);
+    }
+
+    .type-row.filtered-out {
+      opacity: 0.35;
+      filter: grayscale(0.8);
+    }
+
+    .type-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 11px;
+    }
+
+    .type-name-wrap {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-weight: 600;
+    }
+
+    .type-pill {
+      width: 9px;
+      height: 9px;
+      border-radius: 2px;
+      box-shadow: 0 0 6px currentColor;
+    }
+
+    .type-count-wrap {
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 11px;
+      color: var(--text-secondary);
+    }
+
+    .type-bar-bg {
+      width: 100%;
+      height: 4px;
+      background: rgba(255, 255, 255, 0.08);
+      border-radius: 2px;
+      overflow: hidden;
+    }
+
+    .type-bar-fill {
+      height: 100%;
+      border-radius: 2px;
+      transition: width 0.3s cubic-bezier(0.2, 0.8, 0.3, 1);
+    }
+
+    /* Top Sources & Destinations Panel */
+    .top-panel {
+      padding: 14px;
+    }
+
+    .top-tabs {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 10px;
+      border-bottom: 1px solid var(--panel-border);
+      padding-bottom: 6px;
+    }
+
+    .top-tab {
+      background: none;
+      border: none;
+      color: var(--text-secondary);
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 1px;
+      cursor: pointer;
+      padding: 2px 8px;
+      border-radius: 4px;
+      transition: color 0.2s, background 0.2s;
+    }
+
+    .top-tab.active {
+      color: var(--hud-accent);
+      background: var(--card-bg);
+      box-shadow: 0 0 8px var(--hud-glow);
+    }
+
+    .top-list {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .top-item-card {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+      padding: 5px 8px;
+      border-radius: 4px;
+      background: var(--card-bg);
+      border: 1px solid rgba(255, 255, 255, 0.04);
+      transition: background 0.2s;
+    }
+
+    .top-item-card:hover {
+      background: var(--card-hover);
+    }
+
+    .top-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 11px;
+    }
+
+    .top-rank {
+      font-family: 'Share Tech Mono', monospace;
+      color: var(--hud-accent);
+      width: 16px;
+      font-size: 10px;
+    }
+
+    .top-flag {
+      font-size: 13px;
+      margin-right: 6px;
+      line-height: 1;
+    }
+
+    .top-name {
+      flex: 1;
+      padding: 0 4px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      color: var(--text-primary);
+    }
+
+    .top-value {
+      font-family: 'Share Tech Mono', monospace;
+      color: var(--text-secondary);
+    }
+
+    .top-meter-bar {
+      width: 100%;
+      height: 3px;
+      background: rgba(255, 255, 255, 0.08);
+      border-radius: 2px;
+      overflow: hidden;
+    }
+
+    .top-meter-fill {
+      height: 100%;
+      background: linear-gradient(90deg, var(--hud-accent), #00f59b);
+      border-radius: 2px;
+      transition: width 0.3s ease;
+    }
+
+    /* Live Feed Panel */
+    .feed-panel {
+      padding: 14px;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      min-height: 220px;
+    }
+
+    .feed-container {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+      overflow: hidden;
+      flex: 1;
+    }
+
+    .feed-item {
+      display: grid;
+      grid-template-columns: 50px 1fr auto;
+      align-items: center;
+      gap: 6px;
+      padding: 5px 8px;
+      background: var(--card-bg);
+      border-left: 3px solid var(--hud-accent);
+      border-radius: 3px;
+      font-size: 11px;
+      animation: feedSlideIn 0.25s cubic-bezier(0.1, 0.9, 0.2, 1);
+    }
+
+    @keyframes feedSlideIn {
+      from {
+        opacity: 0;
+        transform: translateX(20px);
+      }
+      to {
+        opacity: 1;
+        transform: translateX(0);
+      }
+    }
+
+    .feed-time {
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 9px;
+      color: var(--text-muted);
+    }
+
+    .feed-route {
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      color: var(--text-primary);
+      font-size: 11px;
+    }
+
+    .feed-badge {
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 9px;
+      padding: 2px 6px;
+      border-radius: 3px;
+      text-transform: uppercase;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+    }
+
+    /* ==========================================================================
+       BOTTOM CONTROL DOCK & ATTRIBUTION
+       ========================================================================== */
+    .hud-bottom {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      width: 100%;
+    }
+
+    .dock-controls {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 18px;
+      width: 100%;
+      gap: 16px;
+    }
+
+    .dock-left, .dock-center, .dock-right {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .slider-wrap {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 11px;
+      color: var(--text-secondary);
+    }
+
+    .cyber-slider {
+      -webkit-appearance: none;
+      width: 110px;
+      height: 4px;
+      background: var(--card-bg);
+      border-radius: 2px;
+      outline: none;
+      border: 1px solid var(--panel-border);
+    }
+
+    .cyber-slider::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: var(--hud-accent);
+      cursor: pointer;
+      box-shadow: 0 0 8px var(--hud-accent);
+    }
+
+    .cyber-select {
+      background: var(--card-bg);
+      border: 1px solid var(--panel-border);
+      color: var(--text-primary);
+      padding: 5px 10px;
+      border-radius: 6px;
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 12px;
+      font-weight: 600;
+      outline: none;
+      cursor: pointer;
+    }
+
+    .cyber-select option {
+      background: var(--bg-color);
+      color: var(--text-primary);
+    }
+
+    /* Attribution Bar */
+    .attribution-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 10px;
+      color: var(--text-muted);
+      padding: 0 18px;
+      font-family: 'Share Tech Mono', monospace;
+    }
+
+    .attribution-bar a {
+      color: var(--text-secondary);
+      text-decoration: none;
+      transition: color 0.2s;
+    }
+
+    .attribution-bar a:hover {
+      color: var(--hud-accent);
+    }
+
+    /* ==========================================================================
+       RESPONSIVE DESIGN (DOWN TO MOBILE)
+       ========================================================================== */
+    @media (max-width: 900px) {
+      body {
+        overflow-y: auto;
+      }
+
+      .hud-container {
+        position: relative;
+        height: auto;
+        min-height: 100vh;
+        pointer-events: auto;
+        padding: 8px;
+      }
+
+      #mapCanvas {
+        position: relative;
+        height: 45vh;
+        width: 100%;
+        border-radius: 8px;
+        border: 1px solid var(--panel-border);
+      }
+
+      .radar-vignette, .cyber-crosshairs {
+        height: 45vh;
+      }
+
+      .hud-middle {
+        flex-direction: column;
+        height: auto;
+        gap: 12px;
+      }
+
+      .hud-left-column, .hud-right-column {
+        width: 100%;
+        max-height: none;
+        overflow: visible;
+      }
+
+      .hud-header {
+        flex-direction: column;
+        gap: 10px;
+        align-items: flex-start;
+      }
+
+      .dock-controls {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 12px;
+      }
+
+      .attribution-bar {
+        flex-direction: column;
+        gap: 4px;
+        align-items: flex-start;
+      }
+    }
+
+    /* Reduced Motion Accessibility */
+    @media (prefers-reduced-motion: reduce) {
+      * {
+        animation-duration: 0.001ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.001ms !important;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Fullscreen Canvas Rendering Engine -->
+  <canvas id="mapCanvas"></canvas>
+  <div class="radar-vignette"></div>
+  <div class="cyber-crosshairs"></div>
+
+  <!-- HUD Overlay Layer -->
+  <div class="hud-container">
+
+    <!-- Top Header -->
+    <header class="hud-card hud-header interactive">
+      <div class="brand-section">
+        <div class="radar-icon-pulse"></div>
+        <div>
+          <div class="brand-title">CYTECKVIZIO</div>
+          <div class="brand-subtitle">3D GLOBAL THREAT RADAR TELEMETRY</div>
+        </div>
+      </div>
+
+      <div class="header-center-info">
+        <div id="defconBadge" class="defcon-badge defcon-3" title="Current Cyber Threat Level">
+          <span class="defcon-bars">
+            <span class="d-bar b1"></span>
+            <span class="d-bar b2"></span>
+            <span class="d-bar b3"></span>
+            <span class="d-bar b4"></span>
+          </span>
+          <span id="defconText">DEFCON 3 // ELEVATED</span>
+        </div>
+        <div id="statusBadge" class="status-badge simulated">
+          <span class="status-dot"></span>
+          <span id="statusText">SIMULATED</span>
+        </div>
+        <div id="clockDisplay" class="clock-display">00:00:00 UTC</div>
+      </div>
+
+      <div class="header-actions">
+        <button id="btnResetView" class="btn-hud" title="Reset 3D Globe Orientation">
+          <svg viewBox="0 0 24 24"><path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46A7.93 7.93 0 0020 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74A7.93 7.93 0 004 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z"/></svg>
+          <span>RESET GLOBE</span>
+        </button>
+        <button id="btnAudio" class="btn-hud" title="Toggle Synthesized Audio SFX">
+          <svg viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02z"/></svg>
+          <span id="audioLabel">AUDIO: OFF</span>
+          <div id="audioEq" class="audio-eq-bars">
+            <span></span><span></span><span></span>
+          </div>
+        </button>
+        <button id="btnTheme" class="btn-hud" title="Toggle Dark/Light Mode">
+          <svg viewBox="0 0 24 24"><path d="M12 3c-4.97 0-9 4.03-9 9s4.03 9 9 9 9-4.03 9-9c0-.46-.04-.92-.1-1.36-.98 1.37-2.58 2.26-4.4 2.26-3.03 0-5.5-2.47-5.5-5.5 0-1.82.89-3.42 2.26-4.4-.44-.06-.9-.1-1.36-.1z"/></svg>
+          <span id="themeLabel">THEME</span>
+        </button>
+        <button id="btnFullscreen" class="btn-hud" title="Toggle Fullscreen Command Center">
+          <svg viewBox="0 0 24 24"><path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/></svg>
+          <span id="fsLabel">FULLSCREEN</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- Tactical Cursor Telemetry Overlay -->
+    <div id="tacticalCursor" class="tactical-cursor">
+      <span id="cursorCoords">LAT 00.00° | LON 00.00°</span>
+      <span id="cursorRegion">SECTOR: GLOBAL RADAR ACTIVE</span>
+    </div>
+
+    <!-- Main HUD Panels (Left & Right) -->
+    <main class="hud-middle">
+      
+      <!-- Left Column: Counters & Threat Vectors -->
+      <section class="hud-left-column">
+        
+        <!-- Live Metrics Counters -->
+        <div class="hud-card counters-grid interactive">
+          <div class="counter-block full-width">
+            <span class="counter-label">Total Attacks Recorded</span>
+            <span id="counterTotal" class="counter-value accent">0</span>
+          </div>
+          <div class="counter-block">
+            <span class="counter-label">Attacks / Sec</span>
+            <span id="counterAps" class="counter-value">0.0</span>
+          </div>
+          <div class="counter-block">
+            <span class="counter-label">Peak APS</span>
+            <span id="counterPeak" class="counter-value">0.0</span>
+          </div>
+
+          <!-- Real-time Sparkline Spectrum Waveform -->
+          <div class="sparkline-box">
+            <div class="sparkline-header">
+              <span>ATTACK ACTIVITY SPECTRUM (30s)</span>
+              <span id="chartPeakLabel">PEAK: 0.0 APS</span>
+            </div>
+            <canvas id="apsSparkline" width="280" height="38"></canvas>
+          </div>
+        </div>
+
+
+        <!-- Attack Type Classifications & Filters -->
+        <div class="hud-card types-panel interactive">
+          <div class="hud-title">
+            <svg viewBox="0 0 24 24"><path d="M12 2L1 21h22L12 2zm0 3.99L19.53 19H4.47L12 5.99zM11 10h2v4h-2zm0 6h2v2h-2z"/></svg>
+            Threat Vectors (Click to Filter)
+          </div>
+          <div id="typesList">
+            <!-- Dynamically populated -->
+          </div>
+        </div>
+
+      </section>
+
+      <!-- Right Column: Top Geographies & Live Incident Feed -->
+      <section class="hud-right-column">
+        
+        <!-- Top Ranked Sources / Targets -->
+        <div class="hud-card top-panel interactive">
+          <div class="top-tabs">
+            <button id="tabSources" class="top-tab active">TOP SOURCES</button>
+            <button id="tabTargets" class="top-tab">TOP SENSORS</button>
+          </div>
+          <div id="topListContainer" class="top-list">
+            <!-- Dynamically populated -->
+          </div>
+        </div>
+
+        <!-- Scrolling Live Telemetry Feed (9 events) -->
+        <div class="hud-card feed-panel interactive">
+          <div class="hud-title">
+            <svg viewBox="0 0 24 24"><path d="M13 3h-2v10h2V3zm4.83 2.17l-1.42 1.42C17.99 7.86 19 9.81 19 12c0 3.87-3.13 7-7 7s-7-3.13-7-7c0-2.19 1.01-4.14 2.58-5.42L6.17 5.17C4.23 6.82 3 9.26 3 12c0 4.97 4.03 9 9 9s9-4.03 9-9c0-2.74-1.23-5.18-3.17-6.83z"/></svg>
+            Live Incident Telemetry
+          </div>
+          <div id="feedContainer" class="feed-container">
+            <!-- Dynamically populated 9 events -->
+          </div>
+        </div>
+
+      </section>
+
+    </main>
+
+    <!-- Bottom Controls & Attributions -->
+    <footer class="hud-bottom">
+      <div class="hud-card dock-controls interactive">
+        
+        <div class="dock-left">
+          <button id="btnPause" class="btn-hud">
+            <svg id="pauseIcon" viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
+            <span id="pauseLabel">PAUSE</span>
+          </button>
+
+          <div class="slider-wrap">
+            <span>RATE:</span>
+            <input type="range" id="rateSlider" class="cyber-slider" min="0.25" max="3" step="0.25" value="1">
+            <span id="rateValue">1.0x</span>
+          </div>
+        </div>
+
+        <div class="dock-center">
+          <select id="adapterSelect" class="cyber-select">
+            <option value="simulator">Adapter: Threat Simulator</option>
+            <option value="sse">Adapter: Live Server-Sent Events (/events)</option>
+            <option value="honeydb">Adapter: HoneyDB Bad Hosts</option>
+            <option value="offseq">Adapter: OffSeq Mirage Intelligence</option>
+          </select>
+
+          <select id="sensorModeSelect" class="cyber-select">
+            <option value="random">Sensor: Distributed Mesh (7 Cities)</option>
+            <option value="frankfurt">Sensor: Frankfurt Primus</option>
+            <option value="newyork">Sensor: New York Sentinel</option>
+            <option value="singapore">Sensor: Singapore Gateway</option>
+          </select>
+        </div>
+
+        <div class="dock-right">
+          <span style="font-family:'Share Tech Mono',monospace; font-size:11px; color:var(--text-muted)">
+            ARCS ACTIVE: <span id="arcsActiveCounter" style="color:var(--hud-accent)">0</span>/150
+          </span>
+        </div>
+
+      </div>
+
+      <!-- Attributions and Disclaimer Notice -->
+      <div class="attribution-bar">
+        <div>
+          <span>Data Attributions: </span>
+          <a href="https://honeydb.io" target="_blank" rel="noopener">HoneyDB Community</a> &bull; 
+          <a href="https://offseq.com" target="_blank" rel="noopener">OffSeq Mirage Intel</a> &bull; 
+          <a href="https://dev.maxmind.com/geoip/geolite2-free-geolocation-data" target="_blank" rel="noopener">MaxMind GeoLite2</a>
+        </div>
+        <div>
+          <span>Notice: Source IPs in DDoS/botnet traffic can be spoofed; routing represents indicative telemetry.</span>
+        </div>
+      </div>
+    </footer>
+
+  </div>
+
+  <!-- ==========================================================================
+       VANILLA JAVASCRIPT LOGIC
+       ========================================================================== -->
+  <script>
+    /**
+     * =========================================================================
+     * GLOBAL CONFIGURATION
+     * Configure API endpoints, keys, polling intervals, and sensor mesh.
+     * =========================================================================
+     */
+    const CONFIG = {
+      // Upstream keys (keep empty when utilizing server proxy)
+      honeyDbApiId: '',
+      honeyDbApiKey: '',
+      honeyDbPollIntervalSec: 20,
+
+      // OffSeq API settings
+      offSeqBaseUrl: '/api/offseq', // Proxied via server.js or https://mirage.offseq.com
+      offSeqPollIntervalSec: 20,
+
+      // Server streaming endpoints
+      sseUrl: '/events',
+      geoIpEndpoint: '/geoip?ip=',
+
+      // Configurable Destination Sensor Mesh
+      sensors: [
+        { name: 'Frankfurt (DE)', lon: 8.6821, lat: 50.1109, code: 'DE' },
+        { name: 'New York (US)', lon: -74.0060, lat: 40.7128, code: 'US' },
+        { name: 'Singapore (SG)', lon: 103.8198, lat: 1.3521, code: 'SG' },
+        { name: 'Tokyo (JP)', lon: 139.6917, lat: 35.6895, code: 'JP' },
+        { name: 'London (GB)', lon: -0.1278, lat: 51.5074, code: 'GB' },
+        { name: 'Sydney (AU)', lon: 151.2093, lat: -33.8688, code: 'AU' },
+        { name: 'Sao Paulo (BR)', lon: -46.6333, lat: -23.5505, code: 'BR' }
+      ],
+
+      // Arc and queue constraints
+      maxOnScreenArcs: 150,
+      dedupCacheSize: 5000,
+      defaultRate: 1.0
+    };
+
+    /**
+     * Threat Vector Colors and Metadata
+     */
+    const THREAT_TYPES = {
+      'DDoS':        { color: '#ff2a6d', icon: '⚡' },
+      'Malware':     { color: '#00f59b', icon: '☣' },
+      'Phishing':    { color: '#05d9e8', icon: '🎣' },
+      'Brute force': { color: '#bf55ec', icon: '🔑' },
+      'Exploit':     { color: '#ffb800', icon: '⚙' },
+      'Ransomware':  { color: '#ff003c', icon: '🔒' }
+    };
+
+    /**
+     * Simplified World Continent Polygons
+     * Coordinates in [Longitude, Latitude]
+     * Rasterized into dots on canvas without any remote images or map tiles.
+     */
+    const CONTINENT_POLYGONS = [
+      // North America (Mainland)
+      [
+        [-168, 65], [-162, 60], [-166, 54], [-153, 58], [-141, 60], [-136, 59],
+        [-130, 55], [-124, 48], [-124, 40], [-120, 35], [-117, 32], [-115, 29],
+        [-110, 23], [-105, 20], [-97, 19], [-93, 16], [-88, 16], [-84, 10],
+        [-77, 8], [-80, 9], [-83, 14], [-88, 21], [-82, 23], [-81, 25],
+        [-80, 31], [-75, 35], [-73, 41], [-70, 43], [-66, 45], [-60, 46],
+        [-64, 50], [-56, 53], [-60, 58], [-64, 62], [-76, 63], [-82, 66],
+        [-86, 70], [-95, 71], [-115, 69], [-125, 70], [-140, 69], [-156, 71],
+        [-165, 70], [-168, 65]
+      ],
+      // Baja California
+      [
+        [-115, 32], [-110, 24], [-109, 23], [-112, 25], [-114, 29], [-117, 32], [-115, 32]
+      ],
+      // Florida
+      [
+        [-82, 30], [-80, 25], [-81, 25], [-83, 29], [-85, 30], [-82, 30]
+      ],
+      // Greenland
+      [
+        [-52, 60], [-42, 60], [-35, 66], [-20, 71], [-18, 77], [-25, 82],
+        [-45, 83], [-55, 81], [-58, 76], [-54, 70], [-52, 60]
+      ],
+      // South America
+      [
+        [-77, 8], [-72, 11], [-63, 10], [-53, 5], [-50, 0], [-38, -4],
+        [-35, -7], [-36, -11], [-39, -15], [-41, -21], [-48, -26], [-53, -33],
+        [-58, -38], [-65, -43], [-66, -54], [-74, -53], [-75, -45], [-72, -37],
+        [-71, -30], [-76, -15], [-81, -5], [-80, 2], [-77, 8]
+      ],
+      // Europe & Western Eurasia
+      [
+        [-9, 36], [-9, 43], [-1, 44], [-2, 47], [3, 44], [3, 47],
+        [5, 53], [8, 55], [10, 57], [13, 55], [19, 54], [22, 55],
+        [28, 60], [35, 65], [40, 67], [50, 68], [60, 68], [60, 52],
+        [50, 46], [40, 44], [35, 46], [30, 46], [28, 41], [23, 40],
+        [23, 38], [19, 40], [16, 38], [15, 41], [13, 42], [14, 45],
+        [10, 44], [4, 43], [3, 42], [-1, 39], [-5, 36], [-9, 36]
+      ],
+      // Scandinavia
+      [
+        [5, 59], [8, 58], [11, 58], [12, 56], [16, 56], [18, 60],
+        [22, 65], [28, 70], [25, 71], [18, 68], [13, 65], [6, 62], [5, 59]
+      ],
+      // British Isles
+      [
+        [-5, 50], [-1, 51], [1, 53], [0, 58], [-4, 58], [-5, 55], [-3, 53], [-5, 52], [-5, 50]
+      ],
+      // Ireland
+      [
+        [-10, 52], [-6, 52], [-6, 55], [-9, 55], [-10, 52]
+      ],
+      // Africa
+      [
+        [-6, 36], [0, 36], [11, 37], [12, 33], [25, 32], [33, 31],
+        [34, 28], [43, 13], [51, 11], [46, 3], [41, -4], [40, -11],
+        [35, -24], [32, -28], [28, -33], [19, -34], [18, -34], [14, -23],
+        [12, -15], [9, -1], [8, 4], [3, 6], [-4, 5], [-8, 5],
+        [-13, 9], [-17, 15], [-16, 21], [-13, 28], [-6, 36]
+      ],
+      // Madagascar
+      [
+        [44, -13], [50, -14], [48, -25], [44, -25], [44, -13]
+      ],
+      // Asia & Siberia
+      [
+        [60, 68], [75, 72], [100, 77], [140, 73], [170, 69], [179, 66],
+        [170, 60], [162, 56], [156, 51], [143, 59], [140, 54], [135, 48],
+        [132, 43], [129, 41], [122, 38], [122, 30], [118, 25], [109, 20],
+        [108, 14], [104, 10], [100, 14], [97, 16], [90, 22], [85, 21],
+        [80, 13], [77, 8], [69, 18], [67, 24], [60, 24], [57, 26],
+        [53, 37], [48, 41], [40, 43], [36, 41], [30, 42], [26, 40],
+        [30, 46], [40, 44], [50, 46], [60, 52], [60, 68]
+      ],
+      // Arabian Peninsula
+      [
+        [35, 30], [40, 32], [48, 30], [53, 25], [60, 23], [57, 18], [52, 14], [44, 13], [35, 30]
+      ],
+      // Indian Subcontinent
+      [
+        [68, 24], [72, 22], [76, 15], [77, 8], [80, 10], [80, 16], [85, 21], [88, 22], [75, 27], [68, 24]
+      ],
+      // Japan
+      [
+        [130, 31], [132, 34], [136, 35], [140, 36], [141, 41], [145, 44],
+        [142, 45], [140, 42], [138, 38], [135, 35], [130, 31]
+      ],
+      // Indonesia (Sumatra & Java)
+      [
+        [95, 5], [100, 1], [105, -5], [114, -8], [114, -7], [106, -5], [98, 3], [95, 5]
+      ],
+      // Borneo
+      [
+        [109, 1], [117, 4], [119, 2], [115, -4], [110, -3], [109, 1]
+      ],
+      // Philippines
+      [
+        [120, 18], [122, 14], [126, 8], [124, 7], [121, 13], [120, 18]
+      ],
+      // Australia
+      [
+        [114, -22], [114, -34], [120, -35], [130, -32], [138, -35], [147, -38],
+        [151, -34], [153, -28], [150, -21], [143, -11], [136, -12], [130, -13],
+        [123, -16], [114, -22]
+      ],
+      // New Zealand
+      [
+        [166, -46], [170, -43], [174, -41], [175, -37], [178, -38],
+        [175, -41], [171, -44], [166, -46]
+      ],
+      // Iceland
+      [
+        [-24, 64], [-14, 64], [-14, 66], [-24, 66], [-24, 64]
+      ],
+      // Sri Lanka
+      [
+        [80, 6], [82, 7], [81, 10], [80, 9], [80, 6]
+      ],
+      // Caribbean (Cuba)
+      [
+        [-84, 22], [-76, 20], [-75, 21], [-83, 23], [-84, 22]
+      ]
+    ];
+
+    /**
+     * Offline Country Centroids Database
+     * Provides instantaneous lat/lon resolution for country-level threat feeds.
+     */
+    const COUNTRY_CENTROIDS = {
+      'US': { name: 'United States', lon: -98.35, lat: 39.50 },
+      'CN': { name: 'China', lon: 104.19, lat: 35.86 },
+      'RU': { name: 'Russia', lon: 105.31, lat: 61.52 },
+      'BR': { name: 'Brazil', lon: -51.92, lat: -14.23 },
+      'DE': { name: 'Germany', lon: 10.45, lat: 51.16 },
+      'IN': { name: 'India', lon: 78.96, lat: 20.59 },
+      'GB': { name: 'United Kingdom', lon: -3.43, lat: 55.37 },
+      'NL': { name: 'Netherlands', lon: 5.29, lat: 52.13 },
+      'VN': { name: 'Vietnam', lon: 108.27, lat: 14.05 },
+      'IR': { name: 'Iran', lon: 53.68, lat: 32.42 },
+      'KR': { name: 'South Korea', lon: 127.76, lat: 35.90 },
+      'JP': { name: 'Japan', lon: 138.25, lat: 36.20 },
+      'FR': { name: 'France', lon: 2.21, lat: 46.22 },
+      'UA': { name: 'Ukraine', lon: 31.16, lat: 48.37 },
+      'SG': { name: 'Singapore', lon: 103.81, lat: 1.35 },
+      'CA': { name: 'Canada', lon: -106.34, lat: 56.13 },
+      'AU': { name: 'Australia', lon: 133.77, lat: -25.27 },
+      'ID': { name: 'Indonesia', lon: 113.92, lat: -0.78 },
+      'TR': { name: 'Turkey', lon: 35.24, lat: 38.96 },
+      'RO': { name: 'Romania', lon: 24.96, lat: 45.94 },
+      'PL': { name: 'Poland', lon: 19.14, lat: 51.91 },
+      'IL': { name: 'Israel', lon: 34.85, lat: 31.04 },
+      'MX': { name: 'Mexico', lon: -102.55, lat: 23.63 },
+      'ZA': { name: 'South Africa', lon: 22.93, lat: -30.55 },
+      'IT': { name: 'Italy', lon: 12.56, lat: 41.87 },
+      'ES': { name: 'Spain', lon: -3.74, lat: 40.46 }
+    };
+
+    /**
+     * Synthesized Cyber Audio Engine (Web Audio API)
+     * Provides subtle tactile audio clicks and thuds without external assets.
+     */
+    class CyberAudioEngine {
+      constructor() {
+        this.ctx = null;
+        this.enabled = false;
+      }
+      init() {
+        if (!this.ctx) {
+          const AudioContext = window.AudioContext || window.webkitAudioContext;
+          if (AudioContext) {
+            this.ctx = new AudioContext();
+          }
+        }
+        if (this.ctx && this.ctx.state === 'suspended') {
+          this.ctx.resume();
+        }
+      }
+      playLaunch() {
+        if (!this.enabled || !this.ctx) return;
+        try {
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(440, this.ctx.currentTime);
+          osc.frequency.exponentialRampToValueAtTime(880, this.ctx.currentTime + 0.05);
+          gain.gain.setValueAtTime(0.02, this.ctx.currentTime);
+          gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.05);
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start();
+          osc.stop(this.ctx.currentTime + 0.05);
+        } catch {}
+      }
+      playImpact() {
+        if (!this.enabled || !this.ctx) return;
+        try {
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(160, this.ctx.currentTime);
+          osc.frequency.exponentialRampToValueAtTime(35, this.ctx.currentTime + 0.14);
+          gain.gain.setValueAtTime(0.04, this.ctx.currentTime);
+          gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.14);
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start();
+          osc.stop(this.ctx.currentTime + 0.14);
+        } catch {}
+      }
+    }
+    const audioEngine = new CyberAudioEngine();
+
+    /**
+     * Point in Polygon test (Ray-Casting Algorithm)
+     * Tests if [lon, lat] is inside a continent polygon boundary.
+     */
+    function pointInPolygon(point, vs) {
+      const x = point[0], y = point[1];
+      let inside = false;
+      for (let i = 0, j = vs.length - 1; i < vs.length; j = i++) {
+        const xi = vs[i][0], yi = vs[i][1];
+        const xj = vs[j][0], yj = vs[j][1];
+        const intersect = ((yi > y) !== (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
+        if (intersect) inside = !inside;
+      }
+      return inside;
+    }
+
+    /**
+     * =========================================================================
+     * 3D CYBER GLOBE VISUAL ENGINE (CYTECKVIZIO)
+     * Real-time interactive 3D globe with Great Circle parabolic attack arcs,
+     * glowing atmospheric halo, sensor defense nodes, and full user rotation.
+     * =========================================================================
+     */
+    class CyberGlobeEngine {
+      constructor(canvasId) {
+        this.canvas = document.getElementById(canvasId);
+        this.ctx = this.canvas.getContext('2d');
+        
+        // 3D Camera & Orientation
+        this.rotX = 0.28; // ~16 degree tilt
+        this.rotY = -0.65; // facing Atlantic / Americas / Europe
+        this.zoom = 1.0;
+        this.velX = 0;
+        this.velY = 0;
+        this.isDragging = false;
+        this.lastMouse = { x: 0, y: 0 };
+        this.lastInteractionTime = performance.now();
+        this.autoRotateSpeed = 0.0018;
+
+        this.dots = []; // precalculated 3D land dots
+        this.arcs = [];
+        this.ripples = [];
+        this.floatingPopups = [];
+        this.sensorFlash = {};
+        this.mousePos = { x: -100, y: -100, active: false };
+        this.isPaused = false;
+        this.speedMultiplier = 1.0;
+        this.dpr = Math.min(window.devicePixelRatio || 1, 2);
+
+        this.typeFilters = {
+          'DDoS': true,
+          'Malware': true,
+          'Phishing': true,
+          'Brute force': true,
+          'Exploit': true,
+          'Ransomware': true
+        };
+
+        this.initResize();
+        this.initInteraction();
+        this.generateGlobeDots();
+        this.startLoop();
+      }
+
+      initResize() {
+        const resize = () => {
+          this.width = this.canvas.clientWidth || window.innerWidth;
+          this.height = this.canvas.clientHeight || window.innerHeight;
+          this.canvas.width = this.width * this.dpr;
+          this.canvas.height = this.height * this.dpr;
+          this.ctx.resetTransform?.();
+          this.ctx.scale(this.dpr, this.dpr);
+        };
+
+        window.addEventListener('resize', resize);
+        resize();
+      }
+
+      /**
+       * Convert (lat, lon) to 3D Cartesian coordinates on a unit sphere
+       */
+      latLonToVector3(lat, lon) {
+        const phi = (90 - lat) * (Math.PI / 180);
+        const theta = (lon + 180) * (Math.PI / 180);
+        return {
+          x: -(Math.sin(phi) * Math.cos(theta)),
+          y: Math.cos(phi),
+          z: Math.sin(phi) * Math.sin(theta)
+        };
+      }
+
+      /**
+       * Great Circle Spherical Linear Interpolation (Slerp)
+       */
+      slerp(v0, v1, t) {
+        let dot = v0.x * v1.x + v0.y * v1.y + v0.z * v1.z;
+        dot = Math.max(-1, Math.min(1, dot));
+        const omega = Math.acos(dot);
+        if (Math.abs(omega) < 0.001) return { x: v0.x, y: v0.y, z: v0.z, omega: 0 };
+        const sinOmega = Math.sin(omega);
+        const s0 = Math.sin((1 - t) * omega) / sinOmega;
+        const s1 = Math.sin(t * omega) / sinOmega;
+        return {
+          x: s0 * v0.x + s1 * v1.x,
+          y: s0 * v0.y + s1 * v1.y,
+          z: s0 * v0.z + s1 * v1.z,
+          omega
+        };
+      }
+
+      /**
+       * Rotate 3D vector by yaw (rotY) and pitch (rotX)
+       */
+      rotatePoint(v, rotY, rotX) {
+        const cosY = Math.cos(rotY);
+        const sinY = Math.sin(rotY);
+        const x1 = v.x * cosY + v.z * sinY;
+        const y1 = v.y;
+        const z1 = -v.x * sinY + v.z * cosY;
+
+        const cosX = Math.cos(rotX);
+        const sinX = Math.sin(rotX);
+        const x2 = x1;
+        const y2 = y1 * cosX - z1 * sinX;
+        const z2 = y1 * sinX + z1 * cosX;
+
+        return { x: x2, y: y2, z: z2 };
+      }
+
+      /**
+       * Precalculate 3D land dots on the sphere from simplified continent polygons
+       */
+      generateGlobeDots() {
+        const dots = [];
+        const step = 2.4; // degrees: yields ~2,600 dots with 60fps performance
+        for (let lat = -80; lat <= 82; lat += step) {
+          for (let lon = -180; lon < 180; lon += step) {
+            for (const poly of CONTINENT_POLYGONS) {
+              if (pointInPolygon([lon, lat], poly)) {
+                const v = this.latLonToVector3(lat, lon);
+                dots.push({
+                  v,
+                  lat,
+                  lon,
+                  baseAlpha: 0.18 + Math.random() * 0.16,
+                  pulseOffset: Math.random() * Math.PI * 2,
+                  glowAlpha: 0,
+                  glowColor: null
+                });
+                break;
+              }
+            }
+          }
+        }
+        this.dots = dots;
+      }
+
+      /**
+       * Interactive mouse drag, touch controls, and zoom bindings
+       */
+      initInteraction() {
+        const canvas = this.canvas;
+        const cursorEl = document.getElementById('tacticalCursor');
+        const coordsEl = document.getElementById('cursorCoords');
+        const regionEl = document.getElementById('cursorRegion');
+
+        // Mouse Down / Drag Start
+        canvas.addEventListener('mousedown', (e) => {
+          this.isDragging = true;
+          this.lastMouse = { x: e.clientX, y: e.clientY };
+          this.velX = 0;
+          this.velY = 0;
+          this.lastInteractionTime = performance.now();
+        });
+
+        window.addEventListener('mousemove', (e) => {
+          this.mousePos.x = e.clientX;
+          this.mousePos.y = e.clientY;
+          this.mousePos.active = true;
+
+          if (this.isDragging) {
+            const dx = e.clientX - this.lastMouse.x;
+            const dy = e.clientY - this.lastMouse.y;
+            this.velY = dx * 0.005;
+            this.velX = dy * 0.005;
+            this.rotY += this.velY;
+            this.rotX = Math.max(-1.25, Math.min(1.25, this.rotX + this.velX));
+            this.lastMouse = { x: e.clientX, y: e.clientY };
+            this.lastInteractionTime = performance.now();
+          }
+
+          // Tactical Cursor Telemetry Readout
+          if (coordsEl && this.width && this.height) {
+            const cx = this.width / 2;
+            const cy = this.height / 2;
+            const R = Math.min(this.width, this.height) * 0.38 * this.zoom;
+            const distFromCenter = Math.hypot(e.clientX - cx, e.clientY - cy);
+
+            if (distFromCenter <= R) {
+              coordsEl.textContent = `3D TARGET RADAR // TRACKING ORBIT`;
+              if (regionEl) regionEl.textContent = `ALTITUDE: ${(350 * this.zoom).toFixed(0)} KM // SECTOR: EARTH`;
+            } else {
+              coordsEl.textContent = `ORBITAL DEEP SPACE RADAR`;
+              if (regionEl) regionEl.textContent = `TELEMETRY: STANDBY`;
+            }
+          }
+        });
+
+        window.addEventListener('mouseup', () => {
+          this.isDragging = false;
+        });
+
+        // Touch Drag & Pinch Zoom
+        let touchStartDist = 0;
+        canvas.addEventListener('touchstart', (e) => {
+          if (e.touches.length === 1) {
+            this.isDragging = true;
+            this.lastMouse = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+            this.velX = 0;
+            this.velY = 0;
+          } else if (e.touches.length === 2) {
+            touchStartDist = Math.hypot(
+              e.touches[0].clientX - e.touches[1].clientX,
+              e.touches[0].clientY - e.touches[1].clientY
+            );
+          }
+          this.lastInteractionTime = performance.now();
+        }, { passive: true });
+
+        canvas.addEventListener('touchmove', (e) => {
+          if (e.touches.length === 1 && this.isDragging) {
+            const dx = e.touches[0].clientX - this.lastMouse.x;
+            const dy = e.touches[0].clientY - this.lastMouse.y;
+            this.velY = dx * 0.006;
+            this.velX = dy * 0.006;
+            this.rotY += this.velY;
+            this.rotX = Math.max(-1.25, Math.min(1.25, this.rotX + this.velX));
+            this.lastMouse = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+          } else if (e.touches.length === 2) {
+            const curDist = Math.hypot(
+              e.touches[0].clientX - e.touches[1].clientX,
+              e.touches[0].clientY - e.touches[1].clientY
+            );
+            const pinchDiff = (curDist - touchStartDist) * 0.005;
+            this.zoom = Math.max(0.6, Math.min(1.85, this.zoom + pinchDiff));
+            touchStartDist = curDist;
+          }
+          this.lastInteractionTime = performance.now();
+        }, { passive: true });
+
+        canvas.addEventListener('touchend', () => {
+          this.isDragging = false;
+        }, { passive: true });
+
+        // Wheel Zoom
+        canvas.addEventListener('wheel', (e) => {
+          e.preventDefault();
+          const delta = e.deltaY > 0 ? -0.08 : 0.08;
+          this.zoom = Math.max(0.6, Math.min(1.85, this.zoom + delta));
+          this.lastInteractionTime = performance.now();
+        }, { passive: false });
+
+        // Reset View button handler
+        const btnReset = document.getElementById('btnResetView');
+        if (btnReset) {
+          btnReset.addEventListener('click', () => this.resetView());
+        }
+      }
+
+      resetView() {
+        this.rotX = 0.28;
+        this.rotY = -0.65;
+        this.zoom = 1.0;
+        this.velX = 0;
+        this.velY = 0;
+      }
+
+      /**
+       * Adds a new attack arc into the active visual 3D simulation
+       */
+      addArc(attack) {
+        if (this.arcs.length >= CONFIG.maxOnScreenArcs) {
+          this.arcs.shift();
+        }
+
+        const vSrc = this.latLonToVector3(attack.src[2], attack.src[1]);
+        const vDst = this.latLonToVector3(attack.dst[2], attack.dst[1]);
+
+        let dot = vSrc.x * vDst.x + vSrc.y * vDst.y + vSrc.z * vDst.z;
+        dot = Math.max(-1, Math.min(1, dot));
+        const omega = Math.acos(dot);
+
+        // Duration scaled by rate slider
+        const duration = (1.4 + Math.random() * 0.8) / this.speedMultiplier;
+
+        const arc = {
+          id: attack.id,
+          type: attack.type,
+          color: THREAT_TYPES[attack.type]?.color || '#00f0ff',
+          vSrc,
+          vDst,
+          omega,
+          progress: 0,
+          speed: 1 / (duration * 60),
+          srcName: attack.src[0],
+          dstName: attack.dst[0],
+          trailLength: 0.22
+        };
+
+        this.arcs.push(arc);
+        audioEngine.playLaunch();
+      }
+
+      /**
+       * Spawns expanding impact ripple shockwaves at destination 3D coordinates
+       */
+      spawnRipple(vDst, color, type, sensorName) {
+        this.ripples.push({
+          v: vDst,
+          color,
+          radius: 2,
+          maxRadius: 28,
+          alpha: 1.0,
+          speed: 1.05
+        });
+
+        // Flash targeted sensor
+        if (sensorName) {
+          this.sensorFlash[sensorName] = 1.0;
+        }
+
+        // Spawn floating combat mitigation label
+        this.spawnFloatingText(vDst, `+ ${type.toUpperCase()} BLOCKED`, color);
+
+        // Light up adjacent map dots on impact
+        for (const dot of this.dots) {
+          const d = Math.hypot(dot.v.x - vDst.x, dot.v.y - vDst.y, dot.v.z - vDst.z);
+          if (d < 0.22) {
+            dot.glowAlpha = 1.0;
+            dot.glowColor = color;
+          }
+        }
+
+        audioEngine.playImpact();
+      }
+
+      spawnFloatingText(vPos, text, color) {
+        if (this.floatingPopups.length > 12) this.floatingPopups.shift();
+        this.floatingPopups.push({
+          v: vPos,
+          text,
+          color,
+          alpha: 1.0,
+          offsetY: 0
+        });
+      }
+
+      /**
+       * Main Animation Loop
+       */
+      startLoop() {
+        let lastTime = performance.now();
+
+        const frame = (now) => {
+          requestAnimationFrame(frame);
+          const dt = Math.min((now - lastTime) / 1000, 0.1);
+          lastTime = now;
+
+          if (!this.isPaused) {
+            this.update(dt, now);
+          }
+          this.render(now);
+        };
+
+        requestAnimationFrame(frame);
+      }
+
+      update(dt, now) {
+        // Handle drag inertia and auto-rotation
+        if (!this.isDragging) {
+          this.rotY += this.velY;
+          this.rotX = Math.max(-1.25, Math.min(1.25, this.rotX + this.velX));
+          this.velY *= 0.93;
+          this.velX *= 0.93;
+
+          // Resume auto-rotation after 1.5s of no interaction
+          if (now - this.lastInteractionTime > 1500) {
+            this.rotY += this.autoRotateSpeed * this.speedMultiplier;
+          }
+        }
+
+        // Update Arcs
+        for (let i = this.arcs.length - 1; i >= 0; i--) {
+          const arc = this.arcs[i];
+          arc.progress += arc.speed * (dt * 60);
+
+          if (arc.progress >= 1.0) {
+            this.spawnRipple(arc.vDst, arc.color, arc.type, arc.dstName);
+            this.arcs.splice(i, 1);
+          }
+        }
+
+        // Update Ripples
+        for (let i = this.ripples.length - 1; i >= 0; i--) {
+          const rip = this.ripples[i];
+          rip.radius += rip.speed;
+          rip.alpha = 1.0 - (rip.radius / rip.maxRadius);
+          if (rip.radius >= rip.maxRadius) {
+            this.ripples.splice(i, 1);
+          }
+        }
+
+        // Update Floating Popups
+        for (let i = this.floatingPopups.length - 1; i >= 0; i--) {
+          const pop = this.floatingPopups[i];
+          pop.offsetY += 0.55;
+          pop.alpha -= 0.02;
+          if (pop.alpha <= 0) {
+            this.floatingPopups.splice(i, 1);
+          }
+        }
+
+        // Decay sensor flashes
+        for (const k in this.sensorFlash) {
+          if (this.sensorFlash[k] > 0.02) {
+            this.sensorFlash[k] *= 0.92;
+          } else {
+            delete this.sensorFlash[k];
+          }
+        }
+
+        // Decay dot reactive glow
+        for (const dot of this.dots) {
+          if (dot.glowAlpha > 0.01) {
+            dot.glowAlpha *= 0.94;
+          } else {
+            dot.glowAlpha = 0;
+            dot.glowColor = null;
+          }
+        }
+
+        // Update HUD Arcs Active count
+        const arcsCounterEl = document.getElementById('arcsActiveCounter');
+        if (arcsCounterEl) {
+          arcsCounterEl.textContent = this.arcs.length;
+        }
+      }
+
+      /**
+       * 3D Globe Render Pipeline
+       */
+      render(now) {
+        const ctx = this.ctx;
+        ctx.clearRect(0, 0, this.width, this.height);
+
+        const isLight = document.documentElement.getAttribute('data-theme') === 'light';
+        const cx = this.width / 2;
+        const cy = this.height / 2;
+        const R = Math.min(this.width, this.height) * 0.38 * this.zoom;
+
+        const defaultDotR = isLight ? 40 : 70;
+        const defaultDotG = isLight ? 80 : 130;
+        const defaultDotB = isLight ? 140 : 220;
+
+        // -------------------------------------------------------------
+        // 1. 3D Outer Atmosphere Halo
+        // -------------------------------------------------------------
+        ctx.save();
+        const haloGrad = ctx.createRadialGradient(cx, cy, R * 0.88, cx, cy, R * 1.25);
+        if (isLight) {
+          haloGrad.addColorStop(0, 'rgba(0, 102, 204, 0.2)');
+          haloGrad.addColorStop(0.5, 'rgba(0, 102, 204, 0.06)');
+          haloGrad.addColorStop(1, 'rgba(0, 102, 204, 0)');
+        } else {
+          haloGrad.addColorStop(0, 'rgba(0, 240, 255, 0.28)');
+          haloGrad.addColorStop(0.5, 'rgba(0, 200, 255, 0.08)');
+          haloGrad.addColorStop(1, 'rgba(0, 240, 255, 0)');
+        }
+        ctx.fillStyle = haloGrad;
+        ctx.beginPath();
+        ctx.arc(cx, cy, R * 1.25, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+
+        // -------------------------------------------------------------
+        // 2. Solid Planet Sphere Body (Occludes back-facing elements)
+        // -------------------------------------------------------------
+        ctx.save();
+        const bodyGrad = ctx.createRadialGradient(cx - R * 0.35, cy - R * 0.35, R * 0.05, cx, cy, R);
+        if (isLight) {
+          bodyGrad.addColorStop(0, '#f8fafc');
+          bodyGrad.addColorStop(0.7, '#e2e8f0');
+          bodyGrad.addColorStop(1, '#cbd5e1');
+        } else {
+          bodyGrad.addColorStop(0, '#0f172a');
+          bodyGrad.addColorStop(0.65, '#070b18');
+          bodyGrad.addColorStop(1, '#03050d');
+        }
+        ctx.fillStyle = bodyGrad;
+        ctx.beginPath();
+        ctx.arc(cx, cy, R, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Atmospheric Rim Silhouette
+        ctx.strokeStyle = isLight ? 'rgba(0, 102, 204, 0.65)' : 'rgba(0, 240, 255, 0.7)';
+        ctx.lineWidth = 1.8;
+        ctx.shadowColor = isLight ? '#0066cc' : '#00f0ff';
+        ctx.shadowBlur = 18;
+        ctx.beginPath();
+        ctx.arc(cx, cy, R, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+
+        // -------------------------------------------------------------
+        // 3. 3D Spherical Latitude & Longitude Coordinate Rings
+        // -------------------------------------------------------------
+        ctx.save();
+        ctx.setLineDash([3, 5]);
+        ctx.strokeStyle = isLight ? 'rgba(0, 102, 204, 0.12)' : 'rgba(0, 240, 255, 0.12)';
+        ctx.lineWidth = 1;
+
+        // Draw parallels (Equator and Tropics)
+        const parallels = [0, 23.5, -23.5];
+        for (const pLat of parallels) {
+          ctx.beginPath();
+          let started = false;
+          for (let lon = -180; lon <= 180; lon += 5) {
+            const v = this.latLonToVector3(pLat, lon);
+            const rp = this.rotatePoint(v, this.rotY, this.rotX);
+            if (rp.z > 0.02) {
+              const sx = cx + rp.x * R;
+              const sy = cy - rp.y * R;
+              if (!started) { ctx.moveTo(sx, sy); started = true; }
+              else { ctx.lineTo(sx, sy); }
+            } else {
+              started = false;
+            }
+          }
+          ctx.stroke();
+        }
+
+        // Draw meridians
+        const meridians = [0, 60, 120, 180, -120, -60];
+        for (const mLon of meridians) {
+          ctx.beginPath();
+          let started = false;
+          for (let lat = -80; lat <= 80; lat += 5) {
+            const v = this.latLonToVector3(lat, mLon);
+            const rp = this.rotatePoint(v, this.rotY, this.rotX);
+            if (rp.z > 0.02) {
+              const sx = cx + rp.x * R;
+              const sy = cy - rp.y * R;
+              if (!started) { ctx.moveTo(sx, sy); started = true; }
+              else { ctx.lineTo(sx, sy); }
+            } else {
+              started = false;
+            }
+          }
+          ctx.stroke();
+        }
+        ctx.restore();
+
+        // -------------------------------------------------------------
+        // 4. Render 3D Dotted Continents on Sphere Surface
+        // -------------------------------------------------------------
+        const timeSec = now * 0.0015;
+        for (let i = 0; i < this.dots.length; i++) {
+          const dot = this.dots[i];
+          const rp = this.rotatePoint(dot.v, this.rotY, this.rotX);
+
+          // Only draw dots on the front visible hemisphere
+          if (rp.z > -0.04) {
+            const sx = cx + rp.x * R;
+            const sy = cy - rp.y * R;
+            const normalZ = Math.max(0, rp.z);
+
+            // Scale dot size and alpha with depth/curvature
+            const radius = 1.0 + normalZ * 1.4;
+            const alpha = dot.baseAlpha + normalZ * 0.45 + Math.sin(timeSec + dot.pulseOffset) * 0.05;
+
+            if (dot.glowAlpha > 0.02) {
+              ctx.fillStyle = dot.glowColor;
+              ctx.globalAlpha = Math.min(1.0, dot.glowAlpha);
+              ctx.beginPath();
+              ctx.arc(sx, sy, radius * 1.5, 0, Math.PI * 2);
+              ctx.fill();
+            } else {
+              ctx.fillStyle = `rgba(${defaultDotR}, ${defaultDotG}, ${defaultDotB}, ${Math.max(0.1, alpha)})`;
+              ctx.globalAlpha = 1.0;
+              ctx.beginPath();
+              ctx.arc(sx, sy, radius, 0, Math.PI * 2);
+              ctx.fill();
+            }
+          }
+        }
+        ctx.globalAlpha = 1.0;
+
+        // -------------------------------------------------------------
+        // 5. Render Active Defense Sensor Nodes in 3D
+        // -------------------------------------------------------------
+        ctx.save();
+        for (const sensor of CONFIG.sensors) {
+          const v = this.latLonToVector3(sensor.lat, sensor.lon);
+          const rp = this.rotatePoint(v, this.rotY, this.rotX);
+
+          if (rp.z > 0.05) {
+            const sx = cx + rp.x * R;
+            const sy = cy - rp.y * R;
+            const flash = this.sensorFlash[sensor.name] || 0;
+            const nodeColor = flash > 0.05 ? '#ff003c' : (isLight ? '#0066cc' : '#00f0ff');
+
+            // Concentric target radar rings
+            ctx.strokeStyle = nodeColor;
+            ctx.lineWidth = 1.2;
+            ctx.globalAlpha = 0.6 + flash * 0.4;
+            ctx.beginPath();
+            ctx.arc(sx, sy, 7 + Math.sin(now * 0.004) * 2, 0, Math.PI * 2);
+            ctx.stroke();
+
+            // Core dot
+            ctx.fillStyle = nodeColor;
+            ctx.globalAlpha = 0.95;
+            ctx.beginPath();
+            ctx.arc(sx, sy, 2.8, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Sensor HUD City Tag Badge
+            ctx.font = '9px "Share Tech Mono", monospace';
+            ctx.fillStyle = isLight ? '#003366' : '#e6f1ff';
+            ctx.globalAlpha = 0.9;
+            const shortName = sensor.name.split(' ')[0].toUpperCase();
+            ctx.fillText(`[${shortName.slice(0, 3)}]`, sx + 10, sy + 3);
+          }
+        }
+        ctx.restore();
+
+        // -------------------------------------------------------------
+        // 6. Render 3D Sub-Orbital Parabolic Glowing Arcs
+        // -------------------------------------------------------------
+        for (const arc of this.arcs) {
+          if (!this.typeFilters[arc.type]) continue;
+
+          ctx.save();
+          const t = Math.min(1.0, arc.progress);
+          const startT = Math.max(0, t - arc.trailLength);
+          const maxAlt = R * Math.min(0.55, 0.16 + arc.omega * 0.22);
+
+          // Render multi-segment glowing tail along Great Circle
+          const segments = 16;
+          let prevPoint = null;
+
+          for (let s = 0; s <= segments; s++) {
+            const st = startT + (t - startT) * (s / segments);
+            const vInterp = this.slerp(arc.vSrc, arc.vDst, st);
+            const alt = Math.sin(st * Math.PI) * maxAlt;
+            const curR = R + alt;
+
+            const pos3D = {
+              x: vInterp.x * curR,
+              y: vInterp.y * curR,
+              z: vInterp.z * curR
+            };
+            const rPos = this.rotatePoint(pos3D, this.rotY, this.rotX);
+
+            // Clip segments completely behind the globe
+            if (rPos.z > -15) {
+              const px = cx + rPos.x;
+              const py = cy - rPos.y;
+
+              if (prevPoint && prevPoint.visible) {
+                const segAlpha = (s / segments) * 0.95;
+                ctx.beginPath();
+                ctx.moveTo(prevPoint.x, prevPoint.y);
+                ctx.lineTo(px, py);
+                ctx.strokeStyle = arc.color;
+                ctx.lineWidth = 1.2 + (s / segments) * 2.4;
+                ctx.globalAlpha = segAlpha;
+                ctx.stroke();
+              }
+              prevPoint = { x: px, y: py, visible: true };
+            } else {
+              prevPoint = { x: 0, y: 0, visible: false };
+            }
+          }
+
+          // Arc Head: High-altitude comet particle & ground shadow
+          const headVec = this.slerp(arc.vSrc, arc.vDst, t);
+          const headAlt = Math.sin(t * Math.PI) * maxAlt;
+          const headPos3D = {
+            x: headVec.x * (R + headAlt),
+            y: headVec.y * (R + headAlt),
+            z: headVec.z * (R + headAlt)
+          };
+          const headRot = this.rotatePoint(headPos3D, this.rotY, this.rotX);
+
+          // Ground shadow position on sphere surface
+          const groundPos3D = {
+            x: headVec.x * R,
+            y: headVec.y * R,
+            z: headVec.z * R
+          };
+          const groundRot = this.rotatePoint(groundPos3D, this.rotY, this.rotX);
+
+          if (headRot.z > -10) {
+            const hx = cx + headRot.x;
+            const hy = cy - headRot.y;
+
+            // Vertical altitude laser tether
+            if (groundRot.z > 0) {
+              const gx = cx + groundRot.x;
+              const gy = cy - groundRot.y;
+              ctx.beginPath();
+              ctx.moveTo(hx, hy);
+              ctx.lineTo(gx, gy);
+              ctx.strokeStyle = arc.color;
+              ctx.globalAlpha = 0.16;
+              ctx.lineWidth = 1;
+              ctx.stroke();
+
+              // Ground shadow marker
+              ctx.fillStyle = arc.color;
+              ctx.globalAlpha = 0.4;
+              ctx.beginPath();
+              ctx.arc(gx, gy, 2, 0, Math.PI * 2);
+              ctx.fill();
+            }
+
+            // Bright comet head
+            ctx.shadowColor = arc.color;
+            ctx.shadowBlur = 16;
+            ctx.fillStyle = '#ffffff';
+            ctx.globalAlpha = 1.0;
+            ctx.beginPath();
+            ctx.arc(hx, hy, 2.8, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Colored outer glow corona
+            ctx.fillStyle = arc.color;
+            ctx.globalAlpha = 0.65;
+            ctx.beginPath();
+            ctx.arc(hx, hy, 5.2, 0, Math.PI * 2);
+            ctx.fill();
+          }
+
+          ctx.restore();
+        }
+
+        // -------------------------------------------------------------
+        // 7. Render 3D Target Landing Ripples
+        // -------------------------------------------------------------
+        for (const rip of this.ripples) {
+          const rp = this.rotatePoint(rip.v, this.rotY, this.rotX);
+          if (rp.z > 0.02) {
+            const rx = cx + rp.x * R;
+            const ry = cy - rp.y * R;
+
+            ctx.save();
+            ctx.strokeStyle = rip.color;
+            ctx.lineWidth = 1.8;
+            ctx.globalAlpha = Math.max(0, rip.alpha);
+            ctx.shadowColor = rip.color;
+            ctx.shadowBlur = 10;
+
+            // Outer shockwave ring
+            ctx.beginPath();
+            ctx.arc(rx, ry, rip.radius, 0, Math.PI * 2);
+            ctx.stroke();
+
+            // Inner shockwave
+            ctx.beginPath();
+            ctx.arc(rx, ry, rip.radius * 0.6, 0, Math.PI * 2);
+            ctx.stroke();
+
+            // Crosshair reticle brackets
+            const bLen = 5;
+            ctx.beginPath();
+            ctx.moveTo(rx - rip.radius - bLen, ry); ctx.lineTo(rx - rip.radius, ry);
+            ctx.moveTo(rx + rip.radius, ry); ctx.lineTo(rx + rip.radius + bLen, ry);
+            ctx.moveTo(rx, ry - rip.radius - bLen); ctx.lineTo(rx, ry - rip.radius);
+            ctx.moveTo(rx, ry + rip.radius); ctx.lineTo(rx, ry + rip.radius + bLen);
+            ctx.stroke();
+
+            // Center flash
+            ctx.fillStyle = rip.color;
+            ctx.beginPath();
+            ctx.arc(rx, ry, 2.5, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.restore();
+          }
+        }
+
+        // -------------------------------------------------------------
+        // 8. Render Floating Combat Mitigation Popups in 3D
+        // -------------------------------------------------------------
+        ctx.save();
+        ctx.font = 'bold 10px "Share Tech Mono", monospace';
+        for (const pop of this.floatingPopups) {
+          const rp = this.rotatePoint(pop.v, this.rotY, this.rotX);
+          if (rp.z > 0.05) {
+            const px = cx + rp.x * R + 8;
+            const py = cy - rp.y * R - pop.offsetY;
+
+            ctx.fillStyle = pop.color;
+            ctx.globalAlpha = Math.max(0, pop.alpha);
+            ctx.shadowColor = pop.color;
+            ctx.shadowBlur = 8;
+            ctx.fillText(pop.text, px, py);
+          }
+        }
+        ctx.restore();
+      }
+    }
+
+
+
+    /**
+     * =========================================================================
+     * DATA LAYER & TELEMETRY HUB
+     * =========================================================================
+     */
+    class AttackHub {
+      constructor(mapEngine) {
+        this.engine = mapEngine;
+        this.totalAttacks = 0;
+        this.rollingTimestamps = [];
+        this.peakAps = 0;
+        this.apsHistory = new Array(50).fill(0);
+        
+        // Threat type tallies
+        this.typeCounts = {
+          'DDoS': 0,
+          'Malware': 0,
+          'Phishing': 0,
+          'Brute force': 0,
+          'Exploit': 0,
+          'Ransomware': 0
+        };
+
+        // Source and destination tallies
+        this.sourceCounts = {};
+        this.targetCounts = {};
+
+        // Live Feed buffer (keeps latest 9)
+        this.feedItems = [];
+
+        // Deduplication ID store
+        this.seenIds = new Set();
+
+        // Local GeoIP Cache
+        this.geoIpCache = new Map();
+
+        // Active sensor selection mode ('random' or specific sensor name)
+        this.sensorMode = 'random';
+
+        this.initTypeUI();
+        this.startApsTicker();
+      }
+
+      /**
+       * Core ingestion entrypoint: pushAttack({ src:[name,lon,lat], dst:[name,lon,lat], type })
+       * Everything visual runs strictly through this method.
+       */
+      pushAttack(attack) {
+        if (!attack || !attack.src || !attack.dst || !attack.type) return;
+
+        // Deduplicate events by ID
+        if (attack.id) {
+          if (this.seenIds.has(attack.id)) return;
+          this.seenIds.add(attack.id);
+          if (this.seenIds.size > CONFIG.dedupCacheSize) {
+            const firstKey = this.seenIds.values().next().value;
+            this.seenIds.delete(firstKey);
+          }
+        } else {
+          attack.id = `atk-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`;
+        }
+
+        // Validate or normalize attack type
+        if (!THREAT_TYPES[attack.type]) {
+          attack.type = 'DDoS';
+        }
+
+        // Destination sensor override based on UI mode
+        if (this.sensorMode !== 'random') {
+          const forcedSensor = CONFIG.sensors.find(s => s.name.toLowerCase().includes(this.sensorMode));
+          if (forcedSensor) {
+            attack.dst = [forcedSensor.name, forcedSensor.lon, forcedSensor.lat];
+          }
+        }
+
+        // Update statistics
+        this.totalAttacks++;
+        this.rollingTimestamps.push(performance.now());
+        this.typeCounts[attack.type] = (this.typeCounts[attack.type] || 0) + 1;
+
+        const srcName = attack.src[0] || 'Unknown';
+        const dstName = attack.dst[0] || 'Sensor';
+        this.sourceCounts[srcName] = (this.sourceCounts[srcName] || 0) + 1;
+        this.targetCounts[dstName] = (this.targetCounts[dstName] || 0) + 1;
+
+        // Send to visual canvas engine
+        this.engine.addArc(attack);
+
+        // Add to live telemetry feed (max 9 items)
+        this.addToFeed(attack);
+
+        // Update counters in UI
+        this.updateCountersUI();
+        this.updateTypesUI();
+        this.updateTopListsUI();
+      }
+
+      /**
+       * Rolling 3-second window calculation for Attacks Per Second (APS)
+       * + Real-time Sparkline Spectrum + Dynamic DEFCON condition
+       */
+      startApsTicker() {
+        setInterval(() => {
+          const now = performance.now();
+          const windowMs = 3000;
+          this.rollingTimestamps = this.rollingTimestamps.filter(t => now - t <= windowMs);
+          const currentAps = (this.rollingTimestamps.length / (windowMs / 1000));
+          
+          if (currentAps > this.peakAps) {
+            this.peakAps = currentAps;
+          }
+
+          const apsEl = document.getElementById('counterAps');
+          const peakEl = document.getElementById('counterPeak');
+          const chartPeakEl = document.getElementById('chartPeakLabel');
+          if (apsEl) apsEl.textContent = currentAps.toFixed(1);
+          if (peakEl) peakEl.textContent = this.peakAps.toFixed(1);
+          if (chartPeakEl) chartPeakEl.textContent = `PEAK: ${this.peakAps.toFixed(1)} APS`;
+
+          // Advance Sparkline history
+          this.apsHistory.push(currentAps);
+          if (this.apsHistory.length > 50) this.apsHistory.shift();
+          this.drawSparkline();
+
+          // Dynamic DEFCON Threat Level evaluation
+          this.updateDefcon(currentAps);
+        }, 250);
+      }
+
+      updateDefcon(aps) {
+        let level = 4;
+        let title = 'DEFCON 4 // NORMAL';
+        if (aps > 18) {
+          level = 1;
+          title = 'DEFCON 1 // SEVERE OUTBREAK';
+        } else if (aps > 10) {
+          level = 2;
+          title = 'DEFCON 2 // HIGH ALERT';
+        } else if (aps > 3) {
+          level = 3;
+          title = 'DEFCON 3 // ELEVATED';
+        }
+
+        const badge = document.getElementById('defconBadge');
+        const text = document.getElementById('defconText');
+        if (badge && text) {
+          badge.className = `defcon-badge defcon-${level}`;
+          text.textContent = title;
+        }
+      }
+
+      drawSparkline() {
+        const c = document.getElementById('apsSparkline');
+        if (!c) return;
+        const ctx = c.getContext('2d');
+        const w = c.width;
+        const h = c.height;
+        ctx.clearRect(0, 0, w, h);
+
+        const data = this.apsHistory;
+        const maxVal = Math.max(8, this.peakAps * 1.1);
+
+        // Gradient fill under curve
+        const grad = ctx.createLinearGradient(0, 0, 0, h);
+        grad.addColorStop(0, 'rgba(0, 240, 255, 0.35)');
+        grad.addColorStop(1, 'rgba(0, 240, 255, 0.0)');
+
+        ctx.beginPath();
+        const stepX = w / (data.length - 1);
+        ctx.moveTo(0, h - (data[0] / maxVal) * (h - 6));
+
+        for (let i = 1; i < data.length; i++) {
+          const cx = i * stepX;
+          const cy = h - (data[i] / maxVal) * (h - 6);
+          ctx.lineTo(cx, cy);
+        }
+
+        // Fill path
+        ctx.save();
+        ctx.lineTo(w, h);
+        ctx.lineTo(0, h);
+        ctx.closePath();
+        ctx.fillStyle = grad;
+        ctx.fill();
+        ctx.restore();
+
+        // Stroke line
+        ctx.strokeStyle = '#00f0ff';
+        ctx.lineWidth = 1.5;
+        ctx.shadowColor = '#00f0ff';
+        ctx.shadowBlur = 6;
+        ctx.stroke();
+
+        // Current tip marker
+        const lastX = w;
+        const lastY = h - (data[data.length - 1] / maxVal) * (h - 6);
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath();
+        ctx.arc(lastX - 2, lastY, 2.5, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      updateCountersUI() {
+        const totalEl = document.getElementById('counterTotal');
+        if (totalEl) {
+          totalEl.textContent = this.totalAttacks.toLocaleString();
+        }
+      }
+
+      initTypeUI() {
+        const container = document.getElementById('typesList');
+        if (!container) return;
+        container.innerHTML = '';
+
+        for (const [typeName, meta] of Object.entries(THREAT_TYPES)) {
+          const row = document.createElement('div');
+          row.className = 'type-row';
+          row.dataset.type = typeName;
+          row.innerHTML = `
+            <div class="type-header">
+              <span class="type-name-wrap">
+                <span class="type-pill" style="background:${meta.color}; color:${meta.color}"></span>
+                <span>${typeName}</span>
+              </span>
+              <span class="type-count-wrap">
+                <span id="typeCount_${typeName}">0</span> (<span id="typePct_${typeName}">0%</span>)
+              </span>
+            </div>
+            <div class="type-bar-bg">
+              <div id="typeBar_${typeName}" class="type-bar-fill" style="width: 0%; background:${meta.color}"></div>
+            </div>
+          `;
+
+          // Clicking a type toggles it on or off
+          row.addEventListener('click', () => {
+            const isActive = !this.engine.typeFilters[typeName];
+            this.engine.typeFilters[typeName] = isActive;
+            row.classList.toggle('filtered-out', !isActive);
+          });
+
+          container.appendChild(row);
+        }
+      }
+
+      updateTypesUI() {
+        const total = Math.max(1, this.totalAttacks);
+        for (const [typeName, count] of Object.entries(this.typeCounts)) {
+          const countEl = document.getElementById(`typeCount_${typeName}`);
+          const pctEl = document.getElementById(`typePct_${typeName}`);
+          const barEl = document.getElementById(`typeBar_${typeName}`);
+          if (countEl) countEl.textContent = count.toLocaleString();
+          if (pctEl && barEl) {
+            const pct = ((count / total) * 100).toFixed(0);
+            pctEl.textContent = `${pct}%`;
+            barEl.style.width = `${pct}%`;
+          }
+        }
+      }
+
+      updateTopListsUI() {
+        const activeTab = document.querySelector('.top-tab.active');
+        const isSources = activeTab?.id === 'tabSources';
+        const dataset = isSources ? this.sourceCounts : this.targetCounts;
+        
+        const sorted = Object.entries(dataset)
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 5);
+
+        const listContainer = document.getElementById('topListContainer');
+        if (!listContainer) return;
+
+        const maxCount = sorted.length > 0 ? sorted[0][1] : 1;
+
+        // Country Flag mapping
+        const FLAGS = {
+          'United States': '🇺🇸', 'China': '🇨🇳', 'Russia': '🇷🇺', 'Brazil': '🇧🇷',
+          'Germany': '🇩🇪', 'India': '🇮🇳', 'United Kingdom': '🇬🇧', 'Netherlands': '🇳🇱',
+          'Vietnam': '🇻🇳', 'Iran': '🇮🇷', 'Japan': '🇯🇵', 'France': '🇫🇷',
+          'South Korea': '🇰🇷', 'Ukraine': '🇺🇦', 'Singapore': '🇸🇬', 'Australia': '🇦🇺',
+          'Canada': '🇨🇦', 'Indonesia': '🇮🇩', 'Turkey': '🇹🇷', 'Poland': '🇵🇱',
+          'Israel': '🇮🇱', 'Frankfurt (DE)': '🇩🇪', 'New York (US)': '🇺🇸',
+          'Singapore (SG)': '🇸🇬', 'Tokyo (JP)': '🇯🇵', 'London (GB)': '🇬🇧',
+          'Sydney (AU)': '🇦🇺', 'Sao Paulo (BR)': '🇧🇷'
+        };
+
+        listContainer.innerHTML = sorted.map(([name, count], index) => {
+          const flag = FLAGS[name] || '🌐';
+          const pct = Math.min(100, Math.max(10, Math.round((count / maxCount) * 100)));
+          return `
+            <div class="top-item-card">
+              <div class="top-item">
+                <span class="top-rank">#${index + 1}</span>
+                <span class="top-flag">${flag}</span>
+                <span class="top-name" title="${name}">${name}</span>
+                <span class="top-value">${count.toLocaleString()}</span>
+              </div>
+              <div class="top-meter-bar">
+                <div class="top-meter-fill" style="width: ${pct}%"></div>
+              </div>
+            </div>
+          `;
+        }).join('');
+      }
+
+
+      addToFeed(attack) {
+        const container = document.getElementById('feedContainer');
+        if (!container) return;
+
+        const timeStr = new Date().toTimeString().split(' ')[0];
+        const meta = THREAT_TYPES[attack.type] || { color: '#00f0ff' };
+        
+        // Mask attacker raw IP if given as IP for privacy compliance
+        let displaySrc = attack.src[0];
+        if (/^\d+\.\d+\.\d+\.\d+$/.test(displaySrc)) {
+          displaySrc = displaySrc.replace(/\.\d+$/, '.xxx');
+        }
+
+        const item = document.createElement('div');
+        item.className = 'feed-item';
+        item.style.borderLeftColor = meta.color;
+        item.innerHTML = `
+          <span class="feed-time">${timeStr}</span>
+          <span class="feed-route">${displaySrc} &rarr; ${attack.dst[0]}</span>
+          <span class="feed-badge" style="background:${meta.color}22; color:${meta.color}; border:1px solid ${meta.color}55">${attack.type}</span>
+        `;
+
+        container.prepend(item);
+
+        // Keep maximum 9 items visible
+        while (container.children.length > 9) {
+          container.removeChild(container.lastChild);
+        }
+      }
+
+      /**
+       * Server-backed IP Geolocation Resolver
+       * Resolves IP to lat/lon via /geoip?ip=... without third-party browser calls.
+       */
+      async resolveIp(ip) {
+        if (!ip) return null;
+        if (this.geoIpCache.has(ip)) {
+          return this.geoIpCache.get(ip);
+        }
+
+        try {
+          const res = await fetch(`${CONFIG.geoIpEndpoint}${encodeURIComponent(ip)}`);
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          const json = await res.json();
+          if (json.data && json.data.lat !== undefined) {
+            this.geoIpCache.set(ip, json.data);
+            return json.data;
+          }
+        } catch {
+          // Fallback to random geographic node
+          const fallback = {
+            country: 'Origin Node',
+            lat: (Math.random() * 80 - 40),
+            lon: (Math.random() * 260 - 130)
+          };
+          this.geoIpCache.set(ip, fallback);
+          return fallback;
+        }
+        return null;
+      }
+    }
+
+    /**
+     * =========================================================================
+     * PLUGGABLE ADAPTER SYSTEM
+     * =========================================================================
+     */
+    class BaseAdapter {
+      constructor(name, hub) {
+        this.name = name;
+        this.hub = hub;
+        this.active = false;
+        this.retryCount = 0;
+      }
+      start() { this.active = true; }
+      stop() { this.active = false; }
+      
+      setStatus(status, text) {
+        const badge = document.getElementById('statusBadge');
+        const statusText = document.getElementById('statusText');
+        if (badge && statusText) {
+          badge.className = `status-badge ${status}`;
+          statusText.textContent = text;
+        }
+      }
+
+      getRandomSensor() {
+        const list = CONFIG.sensors;
+        return list[Math.floor(Math.random() * list.length)];
+      }
+
+      /**
+       * Smooth queue dispatch: spreads a batch of polled events evenly over the interval
+       * with random jitter so attacks arrive smoothly rather than in abrupt bursts.
+       */
+      dispatchBatchSmoothly(events, intervalSec) {
+        if (!events || events.length === 0 || !this.active) return;
+        const totalDurationMs = Math.max(1000, (intervalSec * 0.9) * 1000);
+        const stepMs = totalDurationMs / events.length;
+
+        events.forEach((evt, idx) => {
+          const jitter = (Math.random() - 0.5) * (stepMs * 0.5);
+          const delay = Math.max(0, idx * stepMs + jitter);
+          setTimeout(() => {
+            if (this.active) {
+              this.hub.pushAttack(evt);
+            }
+          }, delay);
+        });
+      }
+    }
+
+    /**
+     * 1. SIMULATOR ADAPTER
+     * Generates realistic, weighted geopolitical cyber attack telemetry.
+     * Serves as default and automatic fallback.
+     */
+    class SimulatorAdapter extends BaseAdapter {
+      constructor(hub) {
+        super('Simulator', hub);
+        this.timer = null;
+      }
+
+      start() {
+        super.start();
+        this.setStatus('simulated', 'SIMULATED FEED');
+        this.scheduleNext();
+      }
+
+      stop() {
+        super.stop();
+        if (this.timer) clearTimeout(this.timer);
+      }
+
+      scheduleNext() {
+        if (!this.active) return;
+
+        // Threat actors with realistic weights
+        const threats = [
+          { country: 'United States', lon: -98.35, lat: 39.50, weight: 22 },
+          { country: 'China', lon: 104.19, lat: 35.86, weight: 19 },
+          { country: 'Russia', lon: 105.31, lat: 61.52, weight: 16 },
+          { country: 'Brazil', lon: -51.92, lat: -14.23, weight: 9 },
+          { country: 'Germany', lon: 10.45, lat: 51.16, weight: 7 },
+          { country: 'India', lon: 78.96, lat: 20.59, weight: 8 },
+          { country: 'Netherlands', lon: 5.29, lat: 52.13, weight: 6 },
+          { country: 'United Kingdom', lon: -3.43, lat: 55.37, weight: 5 },
+          { country: 'Vietnam', lon: 108.27, lat: 14.05, weight: 4 },
+          { country: 'Iran', lon: 53.68, lat: 32.42, weight: 4 }
+        ];
+
+        // Pick weighted threat
+        const totalW = threats.reduce((a, b) => a + b.weight, 0);
+        let rnd = Math.random() * totalW;
+        let chosen = threats[0];
+        for (const t of threats) {
+          if (rnd < t.weight) {
+            chosen = t;
+            break;
+          }
+          rnd -= t.weight;
+        }
+
+        const typeKeys = Object.keys(THREAT_TYPES);
+        const attackType = typeKeys[Math.floor(Math.random() * typeKeys.length)];
+        const sensor = this.getRandomSensor();
+
+        // Slight jitter around origin
+        const jitterLon = (Math.random() - 0.5) * 8;
+        const jitterLat = (Math.random() - 0.5) * 6;
+
+        this.hub.pushAttack({
+          id: `sim-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+          src: [chosen.country, chosen.lon + jitterLon, chosen.lat + jitterLat],
+          dst: [sensor.name, sensor.lon, sensor.lat],
+          type: attackType
+        });
+
+        // Delay between 300ms and 1400ms scaled by speed slider
+        const baseDelay = (350 + Math.random() * 850) / this.hub.engine.speedMultiplier;
+        this.timer = setTimeout(() => this.scheduleNext(), baseDelay);
+      }
+    }
+
+    /**
+     * 2. SSE / WEBSOCKET ADAPTER
+     * Connects to Server-Sent Events stream (/events) from server.js.
+     */
+    class SseAdapter extends BaseAdapter {
+      constructor(hub) {
+        super('SSE Stream', hub);
+        this.eventSource = null;
+        this.reconnectTimer = null;
+      }
+
+      start() {
+        super.start();
+        this.setStatus('disconnected', 'CONNECTING SSE...');
+        this.connect();
+      }
+
+      connect() {
+        if (!this.active) return;
+        try {
+          this.eventSource = new EventSource(CONFIG.sseUrl);
+
+          this.eventSource.onopen = () => {
+            this.retryCount = 0;
+            this.setStatus('live', 'LIVE SSE RADAR');
+          };
+
+          this.eventSource.onmessage = (event) => {
+            try {
+              const data = JSON.parse(event.data);
+              if (data && data.src && data.dst) {
+                this.hub.pushAttack(data);
+              }
+            } catch {}
+          };
+
+          this.eventSource.onerror = () => {
+            this.setStatus('disconnected', 'RECONNECTING...');
+            this.eventSource?.close();
+            // Exponential backoff
+            const delay = Math.min(30000, 1000 * Math.pow(1.8, this.retryCount++));
+            this.reconnectTimer = setTimeout(() => this.connect(), delay);
+          };
+        } catch {
+          this.setStatus('disconnected', 'SSE FAILED');
+        }
+      }
+
+      stop() {
+        super.stop();
+        if (this.eventSource) this.eventSource.close();
+        if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
+      }
+    }
+
+    /**
+     * 3. HONEYDB ADAPTER
+     * Polls HoneyDB API for bad hosts & threat telemetry every 15-30s.
+     * Uses server proxy to protect keys, or direct community endpoint.
+     */
+    class HoneyDbAdapter extends BaseAdapter {
+      constructor(hub) {
+        super('HoneyDB', hub);
+        this.pollTimer = null;
+      }
+
+      start() {
+        super.start();
+        this.setStatus('live', 'HONEYDB POLLING');
+        this.poll();
+      }
+
+      stop() {
+        super.stop();
+        if (this.pollTimer) clearTimeout(this.pollTimer);
+      }
+
+      async poll() {
+        if (!this.active) return;
+        try {
+          // Poll server-side cached proxy /api/honeydb/bad-hosts
+          const res = await fetch('/api/honeydb/bad-hosts');
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          const json = await res.json();
+          
+          if (json.configured === false || !json.data || json.data.length === 0) {
+            // Not configured or empty: inform and fallback gracefully
+            this.setStatus('simulated', 'HONEYDB (FALLBACK)');
+            this.fallbackSimulation();
+          } else {
+            this.setStatus('live', 'HONEYDB LIVE');
+            this.processBadHosts(json.data);
+          }
+        } catch (err) {
+          console.warn('[HoneyDB] Poll error:', err.message);
+          this.setStatus('simulated', 'HONEYDB (OFFLINE)');
+          this.fallbackSimulation();
+        }
+
+        const interval = CONFIG.honeyDbPollIntervalSec || 20;
+        this.pollTimer = setTimeout(() => this.poll(), interval * 1000);
+      }
+
+      async processBadHosts(hosts) {
+        const batch = [];
+        const types = ['Malware', 'Brute force', 'Exploit', 'DDoS'];
+        const sample = hosts.slice(0, 18);
+
+        for (const item of sample) {
+          const ip = item.bad_host || item.ip;
+          const geo = await this.hub.resolveIp(ip);
+          const sensor = this.getRandomSensor();
+          const type = types[Math.floor(Math.random() * types.length)];
+
+          if (geo) {
+            batch.push({
+              id: `hdb-${ip}-${Date.now()}`,
+              src: [geo.country || geo.city || ip, geo.lon, geo.lat],
+              dst: [sensor.name, sensor.lon, sensor.lat],
+              type
+            });
+          }
+        }
+
+        this.dispatchBatchSmoothly(batch, CONFIG.honeyDbPollIntervalSec);
+      }
+
+      fallbackSimulation() {
+        // Emits a realistic HoneyDB sensor packet
+        const sensor = this.getRandomSensor();
+        const types = ['Brute force', 'Exploit', 'Malware'];
+        const threats = Object.values(COUNTRY_CENTROIDS);
+        const src = threats[Math.floor(Math.random() * threats.length)];
+
+        this.hub.pushAttack({
+          id: `hdb-sim-${Date.now()}`,
+          src: [src.name, src.lon, src.lat],
+          dst: [sensor.name, sensor.lon, sensor.lat],
+          type: types[Math.floor(Math.random() * types.length)]
+        });
+      }
+    }
+
+    /**
+     * 4. OFFSEQ MIRAGE INTEL ADAPTER
+     * Polls OffSeq Mirage top countries & services aggregated feeds.
+     * Emits events proportionally spread over the polling interval.
+     */
+    class OffSeqAdapter extends BaseAdapter {
+      constructor(hub) {
+        super('OffSeq', hub);
+        this.pollTimer = null;
+      }
+
+      start() {
+        super.start();
+        this.setStatus('live', 'OFFSEQ POLLING');
+        this.poll();
+      }
+
+      stop() {
+        super.stop();
+        if (this.pollTimer) clearTimeout(this.pollTimer);
+      }
+
+      async poll() {
+        if (!this.active) return;
+        try {
+          const res = await fetch('/api/offseq/countries');
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          const json = await res.json();
+          const items = json.data || [];
+          
+          if (items.length > 0) {
+            this.setStatus('live', 'OFFSEQ MIRAGE LIVE');
+            this.emitProportionalBatch(items);
+          } else {
+            this.setStatus('simulated', 'OFFSEQ (SIMULATED)');
+            this.fallbackSimulation();
+          }
+        } catch (err) {
+          console.warn('[OffSeq] Poll error:', err.message);
+          this.setStatus('simulated', 'OFFSEQ (FALLBACK)');
+          this.fallbackSimulation();
+        }
+
+        const interval = CONFIG.offSeqPollIntervalSec || 20;
+        this.pollTimer = setTimeout(() => this.poll(), interval * 1000);
+      }
+
+      emitProportionalBatch(countryData) {
+        // Calculate proportional events based on counts
+        const batch = [];
+        const topCountries = countryData.slice(0, 10);
+        const sensor = this.getRandomSensor();
+        const types = ['DDoS', 'Exploit', 'Phishing', 'Malware'];
+
+        for (const item of topCountries) {
+          const code = item.country || item.code;
+          const centroid = COUNTRY_CENTROIDS[code] || {
+            name: code || 'Global Origin',
+            lon: (Math.random() * 240 - 120),
+            lat: (Math.random() * 80 - 40)
+          };
+
+          // Scale proportion to 2-4 events per top country
+          const eventsCount = Math.max(1, Math.min(4, Math.floor((item.count || 100) / 800)));
+          for (let i = 0; i < eventsCount; i++) {
+            batch.push({
+              id: `off-${code}-${Date.now()}-${i}`,
+              src: [centroid.name, centroid.lon + (Math.random() - 0.5) * 5, centroid.lat + (Math.random() - 0.5) * 4],
+              dst: [this.getRandomSensor().name, sensor.lon, sensor.lat],
+              type: types[Math.floor(Math.random() * types.length)]
+            });
+          }
+        }
+
+        this.dispatchBatchSmoothly(batch, CONFIG.offSeqPollIntervalSec);
+      }
+
+      fallbackSimulation() {
+        const threats = Object.values(COUNTRY_CENTROIDS);
+        const src = threats[Math.floor(Math.random() * threats.length)];
+        const sensor = this.getRandomSensor();
+        this.hub.pushAttack({
+          id: `off-sim-${Date.now()}`,
+          src: [src.name, src.lon, src.lat],
+          dst: [sensor.name, sensor.lon, sensor.lat],
+          type: 'DDoS'
+        });
+      }
+    }
+
+    /**
+     * =========================================================================
+     * APPLICATION INITIALIZATION & CONTROLS BINDING
+     * =========================================================================
+     */
+    window.addEventListener('DOMContentLoaded', () => {
+      // 1. Initialize Visual 3D Globe Engine & Telemetry Hub
+      const mapEngine = new CyberGlobeEngine('mapCanvas');
+      const attackHub = new AttackHub(mapEngine);
+
+      // Expose globally for external scripts or developer debugging
+      window.pushAttack = (attack) => attackHub.pushAttack(attack);
+      window.attackHub = attackHub;
+      window.mapEngine = mapEngine;
+
+      // 2. Initialize Threat Intelligence Adapters
+      const adapters = {
+        simulator: new SimulatorAdapter(attackHub),
+        sse:       new SseAdapter(attackHub),
+        honeydb:   new HoneyDbAdapter(attackHub),
+        offseq:    new OffSeqAdapter(attackHub)
+      };
+
+      let currentAdapter = adapters.simulator;
+      currentAdapter.start();
+
+      // 3. Adapter Selector Dropdown
+      const adapterSelect = document.getElementById('adapterSelect');
+      adapterSelect.addEventListener('change', (e) => {
+        const chosen = e.target.value;
+        if (adapters[chosen]) {
+          currentAdapter.stop();
+          currentAdapter = adapters[chosen];
+          currentAdapter.start();
+        }
+      });
+
+      // 4. Sensor Mesh Mode Dropdown
+      const sensorModeSelect = document.getElementById('sensorModeSelect');
+      sensorModeSelect.addEventListener('change', (e) => {
+        attackHub.sensorMode = e.target.value;
+      });
+
+      // 5. Play / Pause Control
+      const btnPause = document.getElementById('btnPause');
+      const pauseLabel = document.getElementById('pauseLabel');
+      const pauseIcon = document.getElementById('pauseIcon');
+
+      btnPause.addEventListener('click', () => {
+        mapEngine.isPaused = !mapEngine.isPaused;
+        if (mapEngine.isPaused) {
+          pauseLabel.textContent = 'RESUME';
+          pauseIcon.innerHTML = '<path d="M8 5v14l11-7z"/>';
+        } else {
+          pauseLabel.textContent = 'PAUSE';
+          pauseIcon.innerHTML = '<path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>';
+        }
+      });
+
+      // 6. Rate Slider Control
+      const rateSlider = document.getElementById('rateSlider');
+      const rateValue = document.getElementById('rateValue');
+
+      rateSlider.addEventListener('input', (e) => {
+        const val = parseFloat(e.target.value);
+        mapEngine.speedMultiplier = val;
+        rateValue.textContent = `${val.toFixed(2)}x`;
+      });
+
+      // 7. Dark / Light Theme Toggle
+      const btnTheme = document.getElementById('btnTheme');
+      btnTheme.addEventListener('click', () => {
+        const current = document.documentElement.getAttribute('data-theme') || 'dark';
+        const next = current === 'dark' ? 'light' : 'dark';
+        document.documentElement.setAttribute('data-theme', next);
+      });
+
+      // 8. Synthesized Web Audio Toggle
+      const btnAudio = document.getElementById('btnAudio');
+      const audioLabel = document.getElementById('audioLabel');
+      const audioEq = document.getElementById('audioEq');
+
+      btnAudio.addEventListener('click', () => {
+        audioEngine.init();
+        audioEngine.enabled = !audioEngine.enabled;
+        audioLabel.textContent = audioEngine.enabled ? 'AUDIO: ON' : 'AUDIO: OFF';
+        btnAudio.style.borderColor = audioEngine.enabled ? 'var(--hud-accent)' : '';
+        if (audioEq) {
+          if (audioEngine.enabled) audioEq.classList.add('active');
+          else audioEq.classList.remove('active');
+        }
+      });
+
+      // 9. Fullscreen Toggle
+      const btnFullscreen = document.getElementById('btnFullscreen');
+      const fsLabel = document.getElementById('fsLabel');
+      if (btnFullscreen) {
+        btnFullscreen.addEventListener('click', () => {
+          if (!document.fullscreenElement) {
+            document.documentElement.requestFullscreen?.().catch(() => {});
+            if (fsLabel) fsLabel.textContent = 'EXIT FS';
+          } else {
+            document.exitFullscreen?.().catch(() => {});
+            if (fsLabel) fsLabel.textContent = 'FULLSCREEN';
+          }
+        });
+        document.addEventListener('fullscreenchange', () => {
+          if (fsLabel) {
+            fsLabel.textContent = document.fullscreenElement ? 'EXIT FS' : 'FULLSCREEN';
+          }
+        });
+      }
+
+      // 10. Top Geographies Tab Switching
+      const tabSources = document.getElementById('tabSources');
+      const tabTargets = document.getElementById('tabTargets');
+
+      tabSources.addEventListener('click', () => {
+        tabSources.classList.add('active');
+        tabTargets.classList.remove('active');
+        attackHub.updateTopListsUI();
+      });
+
+      tabTargets.addEventListener('click', () => {
+        tabTargets.classList.add('active');
+        tabSources.classList.remove('active');
+        attackHub.updateTopListsUI();
+      });
+
+      // 11. Clock Ticker (UTC)
+      const clockEl = document.getElementById('clockDisplay');
+      setInterval(() => {
+        const now = new Date();
+        clockEl.textContent = `${now.toTimeString().split(' ')[0]} UTC`;
+      }, 1000);
+    });
+  </script>
+</body>
+</html>
